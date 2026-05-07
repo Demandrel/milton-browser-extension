@@ -1,0 +1,58 @@
+# generated: 2026-05-04
+# project: Milton Browser Extension
+# project_key: browser-extension
+# tracking_system: file-system
+# story_location: tools/browser-extension/_bmad-output/implementation-artifacts
+#
+# PURPOSE:
+# Chromium MV3 browser extension that captures academic-page metadata via the
+# self-hosted Zotero translation-server (translate.milton.so) and posts it to
+# Milton's local connector (127.0.0.1:7521). Companion to:
+#   - 17-5 (Milton local connector server)
+#   - 18-1 (extended payload contract: tags / projects / collections)
+#   - TS-2 / TS-3 / TS-5 (translation-server validation + production deploy)
+#
+# STORY PREFIX: BE-N
+# STORY STATUS: backlog | ready-for-dev | in-progress | review | done
+#
+# Charter: tools/browser-extension/_bmad-output/planning-artifacts/charter.md
+
+generated: 2026-05-04
+project: Milton Browser Extension
+project_key: browser-extension
+tracking_system: file-system
+story_location: tools/browser-extension/_bmad-output/implementation-artifacts
+
+development_status:
+  # Sprint 1: MV1 (Pierre Q1–Q9 charter, 2026-05-04)
+  # Goal: dogfoodable .crx that captures refs from any academic page,
+  # supports tags / projects / collections, gracefully handles signed-out state.
+
+  # BE-1: Scaffold + connector client + signed-out detection + sideload package.
+  # Vite + CRXJS + TS scaffold; manifest V3; toolbar button → minimal popup →
+  # POST URL to translate.milton.so/web → POST CSL-JSON to Milton connector →
+  # toast in Milton. GET /health probe on popup open. Signed-out: "Open Milton"
+  # via milton:// deep-link. pnpm build produces .crx for sideload.
+  BE-1-scaffold-connector-client-sideload: review
+
+  # BE-2: Rich popup UX with metadata preview + tag / project / collection
+  # selectors. Consumes 18-1's GET /tags + /projects + /collections; submits
+  # extended payload (tagIds + newTagNames + projectIds + collectionIds) for
+  # atomic transaction on Milton side. Tag chips via getTagColor(name) hash
+  # function — NO color picker (memory rule: tags have no user-supplied color).
+  BE-2-rich-popup-selectors: backlog
+
+  # BE-3 (DEFERRED): Page-detection content script. Scans DOM (DOI in metadata,
+  # OG type=article, known journal hosts) and surfaces a badge when academic
+  # page detected. Promoted only after BE-2 dogfood validates the always-on
+  # flow.
+  BE-3-page-detection-content-script: backlog
+
+  # BE-4: Auth migration — remove shared MILTON_KEY from extension build,
+  # fetch per-save EdDSA JWT from Milton's local connector POST /auth/issue-token
+  # (story 18-15), send Authorization: Bearer to translate.milton.so (story TS-6).
+  # Handles new error contract: 401 reasons (expired / device_not_registered),
+  # 402 codes (quota_exceeded / tier_required), 503 (key_lookup_unavailable).
+  # 4-state popup matrix: signed-in / signed-out / Milton-closed / Milton-not-installed.
+  # Hard-blocks production Web Store distribution until shipped.
+  BE-4-auth-migration-connector-token: ready-for-dev
