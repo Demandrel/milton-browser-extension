@@ -1,0 +1,126 @@
+:root {
+  color-scheme: light dark;
+  --milton-bg: #ffffff;
+  --milton-fg: #1a1a1a;
+  --milton-muted: #6a6a6a;
+  --milton-accent: #2563eb;
+  --milton-accent-fg: #ffffff;
+  --milton-border: #e5e5e5;
+  --milton-success: #16a34a;
+  --milton-warn: #d97706;
+  --milton-error: #dc2626;
+  --milton-radius: 6px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --milton-bg: #1a1a1a;
+    --milton-fg: #f5f5f5;
+    --milton-muted: #a0a0a0;
+    --milton-border: #333333;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu,
+    sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+body {
+  min-width: 320px;
+  max-width: 480px;
+  background: var(--milton-bg);
+  color: var(--milton-fg);
+}
+
+.milton-popup-root {
+  padding: 16px;
+}
+
+.milton-popup-header {
+  font-weight: 600;
+  font-size: 15px;
+  margin: 0 0 4px;
+}
+
+.milton-popup-url {
+  color: var(--milton-muted);
+  font-size: 12px;
+  word-break: break-all;
+  margin: 0 0 12px;
+}
+
+.milton-popup-button {
+  appearance: none;
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--milton-accent);
+  color: var(--milton-accent-fg);
+  border: 0;
+  border-radius: var(--milton-radius);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.milton-popup-button:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+.milton-popup-button:disabled {
+  background: var(--milton-border);
+  color: var(--milton-muted);
+  cursor: not-allowed;
+}
+
+.milton-popup-button-secondary {
+  background: transparent;
+  color: var(--milton-fg);
+  border: 1px solid var(--milton-border);
+}
+
+.milton-popup-helper {
+  color: var(--milton-muted);
+  font-size: 12px;
+  margin: 8px 0 0;
+}
+
+.milton-popup-error {
+  color: var(--milton-error);
+  font-size: 12px;
+  margin: 8px 0 0;
+  word-break: break-word;
+}
+
+.milton-popup-error-detail {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: var(--milton-muted);
+  display: block;
+  margin-top: 4px;
+}
+
+.milton-popup-success {
+  color: var(--milton-success);
+  font-size: 14px;
+  font-weight: 500;
+  text-align: center;
+  padding: 24px 0;
+}
+
+.milton-popup-loading {
+  color: var(--milton-muted);
+  text-align: center;
+  padding: 24px 0;
+  margin: 0;
+}

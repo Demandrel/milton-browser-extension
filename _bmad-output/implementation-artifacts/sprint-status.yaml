@@ -33,7 +33,7 @@ development_status:
   # POST URL to translate.milton.so/web → POST CSL-JSON to Milton connector →
   # toast in Milton. GET /health probe on popup open. Signed-out: "Open Milton"
   # via milton:// deep-link. pnpm build produces .crx for sideload.
-  BE-1-scaffold-connector-client-sideload: review
+  BE-1-scaffold-connector-client-sideload: done
 
   # BE-2: Rich popup UX with metadata preview + tag / project / collection
   # selectors. Consumes 18-1's GET /tags + /projects + /collections; submits
