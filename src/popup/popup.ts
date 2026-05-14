@@ -1,7 +1,14 @@
 import { createReference, health } from '../lib/connector-client'
-import { mapCslToConnectorPayload } from '../lib/csl-to-payload'
+import { mapMetadataToPayload } from '../lib/metadata-to-payload'
 import { extractMetadata } from '../lib/translation-client'
-import type { ConnectorReferencePayload } from '../lib/types'
+import type {
+  ConnectorReferencePayload,
+  CreateReferenceResult,
+  TokenFetchResult,
+  TranslateError,
+} from '../lib/types'
+
+type TokenFailure = Exclude<TokenFetchResult, { ok: true; token: string }>
 
 type State =
   | { kind: 'loading-tab' }
@@ -18,6 +25,12 @@ type State =
   | { kind: 'error-409-duplicate'; existingId: string }
   | { kind: 'error-400-validation'; message: string; detail?: string }
   | { kind: 'error-network'; message: string }
+  // BE-4 — auth-flow + tier/quota errors from translate.milton.so.
+  | { kind: 'error-auth-failed'; detail: string }
+  | { kind: 'error-rate-limited'; retryAfterSeconds: number }
+  | { kind: 'error-quota-exceeded'; nextResetSeconds: number; upgradeUrl: string }
+  | { kind: 'error-tier-required'; requiredTiers: string[]; upgradeUrl: string }
+  | { kind: 'error-service-unavailable'; retryAfterSeconds?: number }
 
 const root = document.getElementById('root') as HTMLDivElement
 let state: State = { kind: 'loading-tab' }
@@ -85,6 +98,7 @@ function render(): void {
         <p class="milton-popup-header">Milton isn't running</p>
         <p class="milton-popup-helper">Open the desktop app to receive references from your browser.</p>
         <button class="milton-popup-button" id="open-milton">Open Milton</button>
+        <p class="milton-popup-footnote">Don't have Milton? <a href="https://milton.so" target="_blank">Get it here</a>.</p>
       `
       bind('open-milton', openMilton)
       break
@@ -165,37 +179,75 @@ function render(): void {
       `
       bind('retry', retry)
       break
+
+    case 'error-auth-failed':
+      root.innerHTML = `
+        <p class="milton-popup-header">Authentication failed</p>
+        <p class="milton-popup-error">${escapeHtml(state.detail)}</p>
+        <button class="milton-popup-button milton-popup-button-secondary" id="retry">Try again</button>
+      `
+      bind('retry', retry)
+      break
+
+    case 'error-rate-limited':
+      root.innerHTML = `
+        <p class="milton-popup-header">Too many requests</p>
+        <p class="milton-popup-error">Try again in ${humanizeSeconds(state.retryAfterSeconds)}.</p>
+        <button class="milton-popup-button milton-popup-button-secondary" id="retry">Try again</button>
+      `
+      bind('retry', retry)
+      break
+
+    case 'error-quota-exceeded':
+      root.innerHTML = `
+        <p class="milton-popup-header">Free quota reached</p>
+        <p class="milton-popup-error">Next slot in ${humanizeSeconds(state.nextResetSeconds)}, or upgrade for unlimited.</p>
+        <a class="milton-popup-button" href="${escapeAttr(state.upgradeUrl)}" target="_blank" rel="noopener">Upgrade Milton</a>
+      `
+      break
+
+    case 'error-tier-required': {
+      const tier = state.requiredTiers[0] ?? 'paid'
+      root.innerHTML = `
+        <p class="milton-popup-header">Paid plan required</p>
+        <p class="milton-popup-error">This feature requires the ${escapeHtml(tier)} plan or higher.</p>
+        <a class="milton-popup-button" href="${escapeAttr(state.upgradeUrl)}" target="_blank" rel="noopener">Upgrade Milton</a>
+      `
+      break
+    }
+
+    case 'error-service-unavailable':
+      root.innerHTML = `
+        <p class="milton-popup-header">Translation service unavailable</p>
+        <p class="milton-popup-error">${
+          state.retryAfterSeconds
+            ? `Try again in ${humanizeSeconds(state.retryAfterSeconds)}.`
+            : 'Try again in a moment.'
+        }</p>
+        <button class="milton-popup-button milton-popup-button-secondary" id="retry">Try again</button>
+      `
+      bind('retry', retry)
+      break
   }
 }
 
 async function save(): Promise<void> {
   if (!currentUrl) return
 
-  // AC5 — translation-server fetch.
+  // AC3+AC5 — fetch translation metadata (auth-client mints a fresh JWT internally).
   setState({ kind: 'extracting' })
-  let items
-  try {
-    items = await extractMetadata(currentUrl)
-  } catch (e) {
-    setState({
-      kind: 'error-network',
-      message: e instanceof Error ? e.message : 'Network error',
-    })
+  const result = await extractMetadata(currentUrl)
+
+  if (!result.ok) {
+    if (result.via === 'token-mint') {
+      dispatchTokenMintError(result.error)
+    } else {
+      dispatchTranslateServerError(result.error)
+    }
     return
   }
 
-  if (items.length === 0) {
-    setState({ kind: 'error-no-metadata' })
-    return
-  }
-  if (items.length > 1) {
-    // BE-1 uses items[0]; BE-2 will add a picker UI.
-    console.info(
-      `[milton-ext] translation server returned ${items.length} items; using items[0]`,
-    )
-  }
-
-  const payload = mapCslToConnectorPayload(items[0])
+  const payload = mapMetadataToPayload(result.primary, currentUrl)
   if (!payload.title) {
     setState({ kind: 'error-no-metadata' })
     return
@@ -203,7 +255,100 @@ async function save(): Promise<void> {
 
   // AC6 — POST to connector + result-aware states.
   setState({ kind: 'posting', payload })
-  const result = await createReference(payload)
+  const postResult = await createReference(payload)
+  dispatchCreateReferenceResult(postResult)
+}
+
+function dispatchTokenMintError(err: TokenFailure): void {
+  switch (err.reason) {
+    case 'signed-out':
+      setState({ kind: 'signed-out' })
+      break
+    case 'origin-rejected':
+      setState({
+        kind: 'error-auth-failed',
+        detail: 'This extension is not authorized by your Milton install.',
+      })
+      break
+    case 'rate-limited':
+      setState({ kind: 'error-rate-limited', retryAfterSeconds: err.retryAfterSeconds })
+      break
+    case 'network-error':
+      // Connector became unreachable between health probe and token mint.
+      setState({ kind: 'milton-not-running' })
+      break
+    case 'unexpected':
+      setState({ kind: 'error-network', message: err.message })
+      break
+  }
+}
+
+function dispatchTranslateServerError(err: TranslateError): void {
+  switch (err.kind) {
+    case 'no-metadata':
+      setState({ kind: 'error-no-metadata' })
+      break
+    case 'token-expired':
+    case 'token-invalid':
+    case 'wrong-audience':
+    case 'device-owner-mismatch':
+      setState({ kind: 'error-auth-failed', detail: 'Authentication failed, try again.' })
+      break
+    case 'device-not-registered':
+      setState({
+        kind: 'error-auth-failed',
+        detail: 'Sign out and back in to Milton to re-register this device.',
+      })
+      break
+    case 'tier-required':
+      setState({
+        kind: 'error-tier-required',
+        requiredTiers: err.requiredTiers,
+        upgradeUrl: err.upgradeUrl,
+      })
+      break
+    case 'tier-revoked':
+      setState({
+        kind: 'error-tier-required',
+        requiredTiers: [err.dbTier || 'paid'],
+        upgradeUrl: err.upgradeUrl,
+      })
+      break
+    case 'quota-exceeded':
+      setState({
+        kind: 'error-quota-exceeded',
+        nextResetSeconds: err.nextResetSeconds,
+        upgradeUrl: 'https://milton.so/upgrade',
+      })
+      break
+    case 'rate-limited':
+      setState({ kind: 'error-rate-limited', retryAfterSeconds: err.retryAfterSeconds })
+      break
+    case 'key-lookup-unavailable':
+    case 'service-unavailable':
+      setState({
+        kind: 'error-service-unavailable',
+        retryAfterSeconds: err.retryAfterSeconds,
+      })
+      break
+    case 'payload-too-large':
+      setState({ kind: 'error-too-large' })
+      break
+    case 'bad-gateway':
+    case 'method-not-allowed':
+    case 'not-found':
+      setState({ kind: 'error-network', message: 'Translation service returned an unexpected response.' })
+      break
+    case 'unexpected':
+      setState({ kind: 'error-network', message: err.message })
+      break
+    case 'network-error':
+      setState({ kind: 'error-network', message: err.message })
+      break
+  }
+}
+
+function dispatchCreateReferenceResult(result: CreateReferenceResult): void {
   if (result.ok) {
     setState({ kind: 'success', id: result.id })
     return
@@ -251,6 +396,14 @@ function bind(id: string, handler: () => void): void {
   document.getElementById(id)?.addEventListener('click', handler)
 }
 
+function humanizeSeconds(secs: number): string {
+  if (!Number.isFinite(secs) || secs <= 0) return 'a moment'
+  if (secs < 60) return `${Math.round(secs)} seconds`
+  if (secs < 3600) return `${Math.round(secs / 60)} minutes`
+  if (secs < 86400) return `${Math.round(secs / 3600)} hours`
+  return `${Math.round(secs / 86400)} days`
+}
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')
@@ -258,6 +411,10 @@ function escapeHtml(s: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
+}
+
+function escapeAttr(s: string): string {
+  return escapeHtml(s)
 }
 
 // Force initial render so the DOM matches `state` from the very first frame.

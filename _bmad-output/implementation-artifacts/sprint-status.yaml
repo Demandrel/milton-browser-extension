@@ -55,4 +55,4 @@ development_status:
   # 402 codes (quota_exceeded / tier_required), 503 (key_lookup_unavailable).
   # 4-state popup matrix: signed-in / signed-out / Milton-closed / Milton-not-installed.
   # Hard-blocks production Web Store distribution until shipped.
-  BE-4-auth-migration-connector-token: ready-for-dev
+  BE-4-auth-migration-connector-token: done

@@ -1,6 +1,6 @@
 # Story BE-4: Auth Migration — Shared MILTON_KEY → Connector-Issued JWT
 
-Status: ready-for-dev
+Status: done
 Origin: TS-6 + 18-15 introduce per-user JWT auth; BE-4 migrates the extension off the shared key
 Depends on: 18-15 (connector exposes `/auth/issue-token`) AND TS-6 (server expects EdDSA JWT bearer)
 
@@ -91,14 +91,19 @@ This story is the **extension side** of the four-story coordinated change (see 1
 
 ## Tasks / Subtasks
 
-- [ ] Task 1 — Remove `VITE_MILTON_KEY` from `.env.local.example` + all source references (AC1)
-- [ ] Task 2 — Implement `auth-client.ts` with `fetchTranslationToken()` + typed errors (AC2)
-- [ ] Task 3 — Update `translation-client.ts`: fetch token, send `Authorization: Bearer`, retry-once on 401-expired (AC3)
-- [ ] Task 4 — Build error-handler dispatch for new server contract (401/402/503 shapes) (AC4)
-- [ ] Task 5 — Update popup state machine to handle the 4 states (AC5) — extend BE-1's existing matrix with the connector-token-mint outcome
-- [ ] Task 6 — Unit tests for auth-client + translation-client (AC7)
-- [ ] Task 7 — Update README + `.env.local.example` (AC6)
-- [ ] Task 8 — Manual smoke against running stack (AC7)
+- [x] Task 1 — Remove `VITE_MILTON_KEY` from `.env.local.example` + all source references (AC1). Grep on `dist/` after build confirms zero matches.
+- [x] Task 2 — Implement `auth-client.ts` with `fetchTranslationToken()` + `TokenFetchResult` discriminated union (200 → ok+token, 401 → signed-out, 403 → origin-rejected, 429 → rate-limited with Retry-After, network → network-error, other → unexpected). Reads no body in request (connector derives user from its active_user state). (AC2)
+- [x] Task 3 — Rewrite `translation-client.ts`: fetch fresh token via auth-client, POST `/metadata` (NOT `/web` — TS-14 retired it), send `Authorization: Bearer <jwt>` + `Content-Type: text/plain`, parse `MetadataResponse` envelope, retry-once on 401 `expired` only. (AC3 + expanded scope)
+- [x] Task 4 — Build full error-handler dispatch for the new server contract: 401×5 reasons (token_invalid/expired/wrong_audience/device_not_registered/device_owner_mismatch), 402×3 reasons (quota_exceeded/tier_required/tier_revoked) with structured body parsing, 404/405/413/429/502/503 dispatch keyed on body `error` string. (AC4 + expanded scope)
+- [x] Task 5 — Extend popup state machine for the new errors: added 5 new states (`error-auth-failed`, `error-rate-limited`, `error-quota-exceeded`, `error-tier-required`, `error-service-unavailable`). Reused existing `signed-out`, `milton-not-running`, `error-no-metadata`, `error-too-large`, `error-network` for overlapping flows. Added humanizeSeconds helper for retry-after / next_reset_seconds display. (AC5)
+- [x] Task 6 — Unit tests: 39/39 pass. `auth-client.test.ts` 9 tests (success / signed-out / origin-rejected / rate-limited with+without Retry-After / network-error / unexpected status / malformed JSON / missing token field). `translation-client.test.ts` 18 tests (success envelope / Bearer header / `/metadata` endpoint not `/web` / `source_tier:"empty"` → no-metadata / primary:null defensive / token-mint failures pass-through / 401 expired retries once / 401 expired twice does NOT triple-retry / 401 token_invalid no retry / 401 device_not_registered distinct kind / 402 quota_exceeded body parsing / 402 tier_required required_tiers array / 503 key_lookup_unavailable / 503 service_unavailable / 404 not_found / 429 with Retry-After / network-error). `metadata-to-payload.test.ts` 12 tests (author shape with empty last / empty-both filtered / year=0 omitted / doi/abstract empty omitted / no type emitted / url from caller / AC7 envelope / full arXiv snapshot). (AC7 unit-test portion)
+- [x] Task 7 — Update README + `.env.local.example`: README now has full "Auth flow" section with pipeline diagram + popup state matrix table + origin allowlist deployment checklist; `.env.local.example` no longer references `VITE_MILTON_KEY`. (AC6)
+- [x] Task 8 — Manual smoke validated by Pierre 2026-05-14: arxiv save → reference created in Milton library, end-to-end flow works. Pierre observation: "*it is a bit long but it works*" — total save time runs into a few seconds dominated by translate.milton.so/metadata translator processing. Filing a tech-debt entry for a perf-observation pass once we have more data (translator-server timings, GROBID hit-rate). (AC7 manual portion)
+
+### Expanded-scope tasks (added 2026-05-14 per Change Log)
+
+- [x] Task 9 — Rewrite mapper: `csl-to-payload.ts` (deleted) → `metadata-to-payload.ts`. Adapts the new `MetadataPrimary` envelope (`authors[{first, last}]`, integer `year`, empty-string-when-absent strings) to the same `ConnectorReferencePayload`. `itemType` is no longer carried by the envelope, so the mapper emits no `type` field (connector falls back to `article` server-side).
+- [x] Task 10 — Update types.ts with the new wire shapes: `IssueTokenResponse`, `TokenFetchResult`, `MetadataSourceTier`, `MetadataExtractedFrom`, `MetadataAuthor`, `MetadataPrimary`, `MetadataResponse`, `TranslateError` (discriminated union of every documented error). Deleted `ZoteroCslItem` and `ZoteroCreator` (no longer used).
 
 ## Dev Notes
 
@@ -134,21 +139,57 @@ This story is the **extension side** of the four-story coordinated change (see 1
 
 ## File List
 
-- `tools/browser-extension/src/lib/auth-client.ts` (NEW) — fetch token from connector
-- `tools/browser-extension/src/lib/translation-client.ts` (MODIFIED) — send bearer instead of X-Milton-Key, handle new errors
-- `tools/browser-extension/src/popup/popup.ts` (MODIFIED) — extend state machine for new error states
-- `tools/browser-extension/src/lib/auth-client.test.ts` (NEW)
-- `tools/browser-extension/src/lib/translation-client.test.ts` (MODIFIED)
-- `tools/browser-extension/.env.local.example` (MODIFIED) — remove VITE_MILTON_KEY
-- `tools/browser-extension/README.md` (MODIFIED) — auth flow section
+**New:**
+- `tools/browser-extension/src/lib/auth-client.ts` — `fetchTranslationToken()` against `POST 127.0.0.1:7521/auth/issue-token`
+- `tools/browser-extension/src/lib/auth-client.test.ts` — 9 Vitest scenarios
+- `tools/browser-extension/src/lib/metadata-to-payload.ts` — `mapMetadataToPayload()` for the `/metadata` envelope
+- `tools/browser-extension/src/lib/metadata-to-payload.test.ts` — 12 Vitest scenarios (replaces csl-to-payload.test.ts)
+- `tools/browser-extension/src/lib/translation-client.test.ts` — 18 Vitest scenarios (new file — BE-1 had none)
+
+**Modified:**
+- `tools/browser-extension/src/lib/translation-client.ts` — full rewrite: `/web` → `/metadata`, `X-Milton-Key` → `Bearer`, retry-once on 401 expired, structured error dispatch over 401×5 / 402×3 / 404 / 405 / 413 / 429 / 502 / 503×2 wire shapes
+- `tools/browser-extension/src/lib/types.ts` — added `IssueTokenResponse`, `TokenFetchResult`, `MetadataResponse` (+ `MetadataPrimary` / `MetadataAuthor` / `MetadataSourceTier` / `MetadataExtractedFrom`), `TranslateError` discriminated union; removed `ZoteroCslItem` + `ZoteroCreator`
+- `tools/browser-extension/src/popup/popup.ts` — 5 new states (`error-auth-failed`, `error-rate-limited`, `error-quota-exceeded`, `error-tier-required`, `error-service-unavailable`), token-mint + translate-server error dispatch helpers, `humanizeSeconds()` helper
+- `tools/browser-extension/.env.local.example` — removed `VITE_MILTON_KEY`; production URL is now default; comment block explains the per-user JWT pipeline
+- `tools/browser-extension/README.md` — added "Auth flow" pipeline diagram + popup state matrix table + origin allowlist deployment checklist; updated story map (BE-4 → shipped)
+
+**Deleted:**
+- `tools/browser-extension/src/lib/csl-to-payload.ts` — superseded by metadata-to-payload.ts
+- `tools/browser-extension/src/lib/csl-to-payload.test.ts` — superseded by metadata-to-payload.test.ts
 
 ## Dev Agent Record
 
 ### Agent Model Used
-_(Filled by dev agent)_
+claude-opus-4-7 (1M context) — invoked via `/bmad_bmm_dev-story BE-4` directly after BE-1's PR landed (`538ac562`).
 
 ### Completion Notes
-_(Filled by dev agent)_
+
+**AC1 (MILTON_KEY removed from build)** — `.env.local.example` no longer references `VITE_MILTON_KEY`; `translation-client.ts` no longer reads it; post-build `grep -r MILTON_KEY dist/` returns empty.
+
+**AC2 (token-mint module)** — `auth-client.ts::fetchTranslationToken()` returns a `TokenFetchResult` discriminated union (no thrown errors — matches BE-1's `connector-client.ts` pattern). Token is NOT cached; each save fetches fresh (30s TTL + sub-ms localhost round-trip per Story 18-15 design).
+
+**AC3 (Bearer + retry-once)** — `translation-client.ts::extractMetadata(url)` mints a token, POSTs to `translate.milton.so/metadata`, retries ONCE on 401 `expired` only (other 401 reasons won't be fixed by a fresh mint). Verified by tests `retries ONCE on 401 expired and succeeds` + `does NOT retry more than once if second attempt also returns 401 expired` + `does NOT retry on 401 token_invalid`.
+
+**AC4 (error dispatch)** — full table of wire shapes parsed: 401×5 (token_invalid/expired/wrong_audience/device_not_registered/device_owner_mismatch), 402×3 (quota_exceeded/tier_required/tier_revoked) with structured body fields (`next_reset_seconds`, `required_tiers`, `upgrade_url`), 404 not_found, 405 method_not_allowed, 413 payload_too_large, 429 rate-limited with Retry-After, 502 bad_gateway, 503 key_lookup_unavailable (distinct retry-after default 30s) vs 503 service_unavailable (generic).
+
+**AC5 (popup state machine)** — 5 new states added on top of BE-1's 14; total now 19. Token-mint failures (signed-out / origin-rejected / rate-limited / network-error / unexpected) dispatch to popup states. Translate-server failures (10 kinds + no-metadata + network-error) dispatch. Display includes `humanizeSeconds()` for friendly retry-after / quota-reset display ("3 minutes", "2 hours", "1 days").
+
+**AC6 (README + .env.local.example)** — README now has Auth-flow section with sequence diagram + popup state matrix + origin allowlist deployment checklist. `.env.local.example` only carries `VITE_TRANSLATE_BASE` (production default + commented local alternative).
+
+**AC7 (tests)** — 39/39 Vitest pass in 231ms.
+
+**Expanded scope (Change Log 2026-05-14)** — endpoint `/web` → `/metadata` + mapper rewrite (`csl-to-payload.ts` deleted, `metadata-to-payload.ts` new) — required because TS-14 retired `/web` server-side on 2026-05-12. Pierre approved in-flight expansion (one-PR coherence vs splitting into two interdependent stories).
+
+**Verification gates run by dev agent:**
+- `pnpm typecheck` (`tsc --noEmit`) → 0 errors
+- `pnpm test` → 39/39 pass, 231ms
+- `pnpm build` → 144ms, dist/ produced (15.21 KB JS bundle, gzip 4.28 KB)
+- `grep -r MILTON_KEY dist/` → no matches (AC1 verification)
+
+**Pierre's gate pending (Task 8 / AC7 manual smoke):** End-to-end save against arXiv / PubMed / Nature; 409 duplicate; signed-out fallback; Milton-closed fallback. Per G17-1, story stays at `review` until Pierre validates in real Chromium.
 
 ## Change Log
 - 2026-05-07: Story drafted by BMad Master alongside TS-6, TS-7, and 18-15.
+- 2026-05-14 (smoke validated): **Pierre confirmed end-to-end save works** after he updated the auth-proxy's `SUPABASE_SERVICE_ROLE_KEY` on Coolify (root cause of the initial 503 `key_lookup_unavailable` smoke failure — TD-61 had rotated the canonical key to `sb_secret_*` but Coolify's env var hadn't been updated). Reference creation against `arxiv.org/abs/2303.08774` succeeds; Milton receives the reference; toast fires. Status flipped to `done`. Filing the "a bit long" observation as a future perf-observation item (no story yet — wants more data first).
+- 2026-05-14 (post-smoke patch): **Wire-shape parser fix.** Pierre's first smoke surfaced a 503 with body `{error:"service_unavailable", reason:"key_lookup_unavailable"}`. The original `translation-client.ts` dispatched 401 and 503 on `body.error`, but the auth-proxy's real wire shape uses `body.error: "unauthorized"` (or `"service_unavailable"`) with the discriminator in `body.reason`. Read `tools/translation-server/auth-proxy/src/server.ts:288-307` for the canonical contract. Effect of the bug: all 401 reasons collapsed into the default "Authentication failed, try again" message — `device_not_registered`'s differentiated UX ("Sign out and back in") never triggered, and the silent retry-once on `expired` never fired. Fix: 401 + 503 now dispatch on `body.reason`; 402 unchanged (uses `body.error` per server.ts:354/422). Test fixtures updated to use real wire shape. Note: this fix does NOT address Pierre's immediate symptom — the 503 itself is server-side (auth-proxy can't reach Supabase, likely the `SUPABASE_SERVICE_ROLE_KEY` rotation from TD-61 not propagated to Coolify env). Filing as separate ops item.
+- 2026-05-14: **Scope expanded in-flight by Dev Agent (Opus 4.7 1M)** — TS-14 (shipped 2026-05-12) removed `/web` from the public route matrix and replaced it with `/metadata` (unified orchestrator + envelope response). BE-4 was scoped 2026-05-07 against the `/web` world, so the auth-header swap alone wouldn't yield a functional extension. Pierre approved the in-place scope expansion. Additional changes folded into this story: (1) endpoint migration `/web` → `/metadata`; (2) response-shape rewrite — translation-client now parses `{source_tier, extracted_from, primary:{authors:[{first,last}], year:int, abstract, doi, ...}, candidates}` instead of `ZoteroCslItem[]`; (3) mapper rename `csl-to-payload.ts` → `metadata-to-payload.ts` (semantic accuracy — the input is no longer CSL flavor); (4) author-shape rewrite (`{first, last}` → `{firstName, lastName}` direct, no more `creators[{name}]` collapse path); (5) `itemType` is dropped from the new envelope, so all references default to server-side fallback (`article`); (6) richer error dispatch table covering 401×5 reasons + 402×3 reasons + 404 not_found + 502 + 503×2 reasons from `docs/integrations/translate-milton-so-api.mdx`. Rationale for one-PR vs split: the header swap is meaningless without the endpoint swap, and vice versa — smoke is the only validation gate and it requires both. Story file ACs/Tasks below now reflect the expanded scope.
