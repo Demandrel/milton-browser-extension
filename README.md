@@ -1,6 +1,6 @@
 # Milton Browser Extension
 
-**Status:** BE-1 scaffold + BE-4 auth migration shipped. Functional end-to-end against current prod. BE-2 + BE-3 backlog.
+**Status:** BE-1 scaffold + BE-4 auth migration + BE-2 rich popup UX (incl. Figma redesign pass) shipped. Functional end-to-end against current prod. BE-3 backlog.
 
 ## What this does
 
@@ -10,9 +10,11 @@ Chromium MV3 extension that captures academic-page metadata and creates referenc
 2. Extension fetches a per-save EdDSA JWT from Milton's local connector
 3. Extension POSTs the URL + Bearer token to `translate.milton.so/metadata` (unified orchestrator)
 4. Receives a metadata envelope (`{source_tier, primary:{authors, year, doi, …}, candidates}`)
-5. Popup shows preview (BE-1: minimal header + URL) + optional tag / project / collection selectors (BE-2)
+5. Popup shows editable metadata preview (title / authors / date / abstract) + tag chip autosuggest, plus an "Add to..." tab for collections / projects (BE-2)
 6. User clicks Save → POST extended payload to `127.0.0.1:7521/references`
 7. Milton creates the reference atomically + shows a toast
+
+While the metadata fetch is in flight (the slow step), the connector's `GET /tags` + `GET /projects` + `GET /collections` run in parallel so the tag selector ("Main info" tab) and the collections / projects picker ("Add to..." tab) are ready by the time the user looks at them.
 
 ## Prerequisites — ALL MET
 
@@ -46,11 +48,14 @@ Why no token caching: 30-second TTL means caching saves nothing real (a single b
 
 ### Popup state matrix
 
-| Connector probe / token mint / translate call | UI state |
+| Connector probe / token mint / translate call / save | UI state |
 |---|---|
 | Milton not running / connector refused | "Milton isn't running" + Open Milton deep-link + "Don't have Milton? Get it here" |
-| Connector returns 401 (signed out) | "Sign in to Milton" + Open Milton deep-link |
-| Token mint succeeds | "Save to Milton" enabled |
+| Connector returns 401 (signed out) / any selector GET returns 503 | "Sign in to Milton" + Open Milton deep-link |
+| Health OK → entering preview (metadata + selectors loading) | "Main info" tab: Preview header with skeleton "Extracting metadata…" + "Loading…" placeholder in the Tags section |
+| Metadata loaded; tags loaded | "Main info" tab: editable preview rows + tag chips + Save button. "Add to..." tab: collections / projects picker (sub-toggle + search + checkbox list) |
+| Tags fetch returned non-503 error | "Tags unavailable" inline note; Save still works with empty arrays |
+| Token mint succeeds | "Save to Milton" enabled (gated by non-empty title) |
 | Token mint 403 (origin not on allowlist) | "Authentication failed" — dev/Web-Store-ID mismatch |
 | Token mint 429 (rate limit) | "Too many requests, try again in Ns" |
 | Translate server 401 expired | Silent retry once with fresh token |
@@ -59,8 +64,9 @@ Why no token caching: 30-second TTL means caching saves nothing real (a single b
 | Translate server 402 tier_required | "This feature requires the {tier} plan or higher" + Upgrade Milton CTA |
 | Translate server 503 service_unavailable | "Translation service unavailable, try again in Ns" |
 | Translate server source_tier:"empty" | "Couldn't extract metadata" + Try-again button |
+| Connector 400 (Invalid tag/project/collection ID — concurrent delete) | "Couldn't save" + offending id in monospace |
 | Connector 503 on POST /references (signed out) | "Sign in to Milton" + Open Milton deep-link |
-| Connector 409 (duplicate) | "Already in your library" |
+| Connector 409 (duplicate) | "Already in your library" + existing reference id. **Org metadata is NOT applied retroactively** per protocol "dedup is a no-op" rule |
 
 ### Origin allowlist (deployment checklist)
 
@@ -102,16 +108,20 @@ Step-by-step to install the extension in Chrome / Edge / Brave:
    - Click **Save** in the popup
    - The reference appears in Milton with a "Reference added from browser" toast
 
-## Smoke test (BE-4 gate)
+## Smoke test (BE-4 + BE-2 gate)
 
 | Scenario | Expected outcome |
 |---|---|
-| `https://arxiv.org/abs/2303.08774` | Saves reference; Milton toast |
-| Recent PubMed article URL | Saves reference; Milton toast |
-| Nature / Springer article URL with DOI | Saves reference; Milton toast |
-| Same arXiv URL again | "Already in your library" 409 message |
-| Sign out of Milton, then click Save | "Sign in to Milton" view + Open Milton deep-link works |
-| Quit Milton, then click Save | "Milton isn't running" + Open Milton deep-link works |
+| `https://arxiv.org/abs/2303.08774` (no selectors) | Saves reference; Milton toast; preview-only flow still works |
+| arXiv + 1 existing tag + 1 new tag + 1 project + 1 collection | All four arrays wired into the payload; Milton library shows tags + project + collection on the ref |
+| PubMed article URL with 3 mixed tags | All 3 tags appear; chip colors deterministic |
+| Nature / Springer article URL with DOI — edit title before saving | Edited title used (not the translation-server original) |
+| Same arXiv URL again with DIFFERENT tags selected | "Already in your library" 409 message. Verify in Milton library that the ORIGINAL ref's tags are unchanged (dedup-is-noop) |
+| Sign out of Milton, then click toolbar | "Sign in to Milton" view + Open Milton deep-link works |
+| Quit Milton, then click toolbar | "Milton isn't running" + Open Milton deep-link works |
+| Delete a project in Milton, then click Save in popup with that project selected | 400 "Invalid project ID" with the deleted id in monospace |
+| Empty title (clear in inline edit) | Save button disabled; "Title is required" helper shown |
+| Cmd+Enter from inside any edit field | Triggers Save when title non-empty |
 
 ## Charter + sprint
 
@@ -119,6 +129,7 @@ Step-by-step to install the extension in Chrome / Edge / Brave:
 - Sprint status: [`_bmad-output/implementation-artifacts/sprint-status.yaml`](_bmad-output/implementation-artifacts/sprint-status.yaml)
 - BE-1 story: [`_bmad-output/implementation-artifacts/BE-1-scaffold-connector-client-sideload.md`](_bmad-output/implementation-artifacts/BE-1-scaffold-connector-client-sideload.md)
 - BE-4 story: [`_bmad-output/implementation-artifacts/BE-4-auth-migration-connector-token.md`](_bmad-output/implementation-artifacts/BE-4-auth-migration-connector-token.md)
+- BE-2 story: [`_bmad-output/implementation-artifacts/BE-2-rich-popup-selectors.md`](_bmad-output/implementation-artifacts/BE-2-rich-popup-selectors.md)
 
 ## Tech stack
 
@@ -126,6 +137,16 @@ Step-by-step to install the extension in Chrome / Edge / Brave:
 - Vitest ^4.1 for unit tests (auth + translation-client dispatch + metadata-to-payload mapping)
 - Chromium-only for v1 (Chrome / Edge / Brave); Firefox is a separate sprint
 - Distribution: sideload `dist/` (Load unpacked) for v1; Chrome Web Store packaging is a follow-up
+
+## Visual design
+
+The popup is styled to Milton's Figma design system (Figma node `1323:8984`, "Browser extension"):
+
+- Pixel-perfect to the Figma frame: Figma Background/Text token set, card surfaces (`#f5f5f5`, 14px radius) for the metadata preview and the tag section, flat `#e5e5e5` tag chips, 1px `#ebebeb` separator, brand-black (`#0a0a0a`) full-width Save button
+- The "Main info / Add to..." segmented tab control is implemented and functional — "Main info" is the metadata preview + tags; "Add to..." is the collections / projects picker (collections/projects sub-toggle + search + scrollable checkbox list). "Save to Milton" is shared across both tabs
+- Light-only, matching the Figma frame (no `prefers-color-scheme: dark` override)
+- **Font:** the design uses Milton's **SN Pro** brand font, but every `sn-pro-*.woff2` in the Milton repo is a corrupted HTML document (not a real font — they fail `OTS` decode in-browser). Until valid woff2 files exist, the popup falls back to the system UI font; `'SN Pro'` is kept first in the family stack so a real-font drop works with zero code change. _(Pre-existing Milton bug — Milton's own `app.css` references the same broken files; logged as TD-70.)_
+- Vanilla CSS, self-contained — no imports from Milton's frontend (BE-1 self-containment rule)
 
 ## Scripts
 
@@ -143,5 +164,5 @@ pnpm test                         # vitest run
 |---|---|---|
 | BE-1 | Scaffold + connector client + signed-out detection + sideload package | shipped |
 | BE-4 | Auth migration — connector token + JWT to translation-server | shipped |
-| BE-2 | Rich popup UX (metadata preview + tag / project / collection selectors) | backlog |
+| BE-2 | Rich popup UX (metadata preview + tag / project / collection selectors) | shipped |
 | BE-3 | Page-detection content script | backlog (deferred) |

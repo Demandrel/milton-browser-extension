@@ -146,3 +146,58 @@ export type CreateReferenceResult =
   | { ok: false; status: 503; message: string; detail?: string }
   | { ok: false; status: 'network-error'; message: string }
   | { ok: false; status: 'payload-too-large'; message: string }
+
+// --- Connector GET /tags + /projects + /collections (Story 18-1) ----------
+// Story BE-2: populate the AC7 forward-compat envelope from popup affordances.
+
+export interface TagSummary {
+  id: string
+  name: string
+}
+
+export interface ProjectSummary {
+  id: string
+  title: string
+}
+
+export interface CollectionSummary {
+  id: string
+  name: string
+}
+
+// `listSelectors()` collapses the three GETs into one result:
+//   • all three 200 → `ok: true` with arrays
+//   • any 503 (signed out) → `signed-out` (no partial UI; whole popup degrades)
+//   • mix of 200 + non-503 failures → `partial-failure` with `null` per failed call
+// Network errors / timeouts on individual calls land in `partial-failure`.
+export type SelectorsResult =
+  | { ok: true; tags: TagSummary[]; projects: ProjectSummary[]; collections: CollectionSummary[] }
+  | { ok: false; reason: 'signed-out' }
+  | {
+      ok: false
+      reason: 'partial-failure'
+      tags: TagSummary[] | null
+      projects: ProjectSummary[] | null
+      collections: CollectionSummary[] | null
+    }
+
+// --- Popup-side editable mirror of MetadataPrimary (Story BE-2 AC2) -------
+// The popup keeps an `EditableMetadata` once the metadata envelope arrives;
+// inline-edit affordances mutate this. `mapMetadataToPayload` accepts a
+// MetadataPrimary, so EditableMetadata structurally widens it (all fields
+// retained even when empty so the mapper sees the same shape).
+
+export interface EditableMetadata {
+  title: string
+  authors: MetadataAuthor[]
+  year: number
+  doi: string
+  journal: string
+  abstract: string
+  issued_date: string
+  arxiv_id: string
+  issn: string
+  volume: string
+  issue: string
+  pages: string
+}

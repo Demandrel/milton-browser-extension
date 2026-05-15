@@ -1,0 +1,154 @@
+// Pure helpers extracted from popup.ts for unit testing.
+// Anything DOM-touching stays in popup.ts; this file is all data/logic.
+
+import type { EditableMetadata, MetadataAuthor, MetadataPrimary, TagSummary } from '../lib/types'
+
+const CURRENT_YEAR = new Date().getFullYear()
+const MIN_YEAR = 1500
+const MAX_YEAR = CURRENT_YEAR + 2
+
+const MAX_SUGGESTIONS = 6
+
+/**
+ * Join authors into a comma-separated display string.
+ * Filters out fully-empty entries before joining.
+ */
+export function joinAuthors(authors: MetadataAuthor[]): string {
+  return authors
+    .filter((a) => a.first.length > 0 || a.last.length > 0)
+    .map((a) => `${a.first} ${a.last}`.trim())
+    .join(', ')
+}
+
+/**
+ * Format authors for the read-only preview row — mirrors Milton's
+ * `formatAuthors` (milton/src/lib/utils/format-authors.ts): up to 3 authors
+ * are listed in full, more than 3 collapse to the first 2 + "et al." so the
+ * row never grows past a line or two (a paper can carry 40+ authors).
+ * Inline edit still operates on the full `authors` array — this is display-only.
+ */
+export function formatAuthorsDisplay(authors: MetadataAuthor[]): string {
+  const names = authors
+    .filter((a) => a.first.length > 0 || a.last.length > 0)
+    .map((a) => `${a.first} ${a.last}`.trim())
+  if (names.length === 0) return ''
+  if (names.length <= 3) return names.join(', ')
+  return names.slice(0, 2).join(', ') + ' et al.'
+}
+
+/**
+ * Parse year from a possibly-noisy user input ("2025-03", "in press", "abc").
+ * Returns the first 4 consecutive digits as int if it's a valid year, else 0.
+ * 0 is the sentinel "omit year from payload" — matches mapMetadataToPayload.
+ */
+export function parseYearInput(input: string): number {
+  const m = input.match(/(\d{4})/)
+  if (!m) return 0
+  const year = Number.parseInt(m[1], 10)
+  if (!Number.isFinite(year)) return 0
+  if (year < MIN_YEAR || year > MAX_YEAR) return 0
+  return year
+}
+
+export type TagInputAction =
+  | { kind: 'select-existing'; id: string }
+  | { kind: 'create-new'; name: string }
+  | { kind: 'ignore' }
+
+/**
+ * Decide what hitting Enter on the tag input should do.
+ *   • pure-whitespace → ignore
+ *   • exact case-insensitive match against an existing tag → select that tag
+ *   • otherwise → create-new with the trimmed name
+ */
+export function decideTagInputEnter(input: string, existingTags: TagSummary[]): TagInputAction {
+  const trimmed = input.trim()
+  if (trimmed.length === 0) return { kind: 'ignore' }
+  const match = existingTags.find((t) => t.name.toLowerCase() === trimmed.toLowerCase())
+  if (match) return { kind: 'select-existing', id: match.id }
+  return { kind: 'create-new', name: trimmed }
+}
+
+/**
+ * Substring-match autosuggest. Returns up to MAX_SUGGESTIONS tags whose names
+ * contain the input substring (case-insensitive), excluding already-selected ids.
+ * Returns [] when input is whitespace-only.
+ */
+export function filterTagSuggestions(
+  input: string,
+  allTags: TagSummary[],
+  selectedIds: string[],
+): TagSummary[] {
+  const trimmed = input.trim().toLowerCase()
+  if (trimmed.length === 0) return []
+  const selected = new Set(selectedIds)
+  const out: TagSummary[] = []
+  for (const t of allTags) {
+    if (selected.has(t.id)) continue
+    if (!t.name.toLowerCase().includes(trimmed)) continue
+    out.push(t)
+    if (out.length >= MAX_SUGGESTIONS) break
+  }
+  return out
+}
+
+/**
+ * Clone a MetadataPrimary into an EditableMetadata mirror. The shapes are
+ * structurally compatible — this is mostly explicit field copy so future
+ * MetadataPrimary additions force us to update the popup state explicitly.
+ */
+export function metadataToEditable(primary: MetadataPrimary): EditableMetadata {
+  return {
+    title: primary.title,
+    authors: primary.authors.map((a) => ({ first: a.first, last: a.last })),
+    year: primary.year,
+    doi: primary.doi,
+    journal: primary.journal,
+    abstract: primary.abstract,
+    issued_date: primary.issued_date,
+    arxiv_id: primary.arxiv_id,
+    issn: primary.issn,
+    volume: primary.volume,
+    issue: primary.issue,
+    pages: primary.pages,
+  }
+}
+
+/** EditableMetadata is structurally a MetadataPrimary; the mapper accepts it. */
+export function editableToMapperInput(editable: EditableMetadata): MetadataPrimary {
+  return editable
+}
+
+/**
+ * A blank EditableMetadata carrying only a title — used for "instant Save"
+ * when the user saves a reference before the metadata fetch completes. Every
+ * other field is empty so the mapper emits a title-and-URL-only payload.
+ */
+export function blankEditable(title: string): EditableMetadata {
+  return {
+    title,
+    authors: [],
+    year: 0,
+    doi: '',
+    journal: '',
+    abstract: '',
+    issued_date: '',
+    arxiv_id: '',
+    issn: '',
+    volume: '',
+    issue: '',
+    pages: '',
+  }
+}
+
+/** Title must be non-empty (after trim) for the connector to accept the POST. */
+export function isTitleValid(editable: EditableMetadata): boolean {
+  return editable.title.trim().length > 0
+}
+
+export const POPUP_HELPERS_CONSTANTS = {
+  CURRENT_YEAR,
+  MIN_YEAR,
+  MAX_YEAR,
+  MAX_SUGGESTIONS,
+} as const

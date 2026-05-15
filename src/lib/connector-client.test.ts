@@ -1,0 +1,260 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { listSelectors } from './connector-client'
+
+// ── fetch mock helpers ─────────────────────────────────────────────────────
+//
+// listSelectors fires three concurrent GETs (Promise.allSettled equivalent
+// via Promise.all). The test mocks `globalThis.fetch` with a router that
+// inspects the URL path and returns the configured Response per path.
+
+type Route = {
+  status?: number
+  body?: unknown
+  /** Throw a network-error instead of resolving. */
+  throwError?: boolean
+  /** Resolve with a Response object whose .json() throws. */
+  malformedJson?: boolean
+}
+
+function installFetchMock(routes: Record<string, Route>): void {
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+    const path = new URL(url as string).pathname
+    const route = routes[path]
+    if (!route) {
+      throw new Error(`test bug: no route registered for ${path}`)
+    }
+    if (route.throwError) {
+      throw new Error('simulated network error')
+    }
+    return new Response(
+      route.malformedJson ? 'not valid json {{{' : JSON.stringify(route.body ?? []),
+      {
+        status: route.status ?? 200,
+        headers: { 'Content-Type': 'application/json' },
+      },
+    )
+  })
+}
+
+beforeEach(() => {
+  vi.restoreAllMocks()
+})
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
+describe('listSelectors — happy path', () => {
+  it('returns ok with all three arrays when all 200', async () => {
+    installFetchMock({
+      '/tags': { body: [{ id: 't1', name: 'Quantum' }, { id: 't2', name: 'NLP' }] },
+      '/projects': {
+        body: [
+          { id: 'p1', title: 'Thesis', status: 'wip' },
+          { id: 'p2', title: 'Backlog', status: 'idea' },
+        ],
+      },
+      '/collections': { body: [{ id: 'c1', name: 'Reading List' }] },
+    })
+    const r = await listSelectors()
+    expect(r.ok).toBe(true)
+    if (!r.ok) throw new Error('expected ok')
+    expect(r.tags).toHaveLength(2)
+    expect(r.tags[0]).toEqual({ id: 't1', name: 'Quantum' })
+    expect(r.projects).toHaveLength(2)
+    // The connector still sends `status` on the wire; the popup dropped the
+    // status badge in the Figma redesign so it's parsed away as an extra field.
+    expect(r.projects[0]).toEqual({ id: 'p1', title: 'Thesis' })
+    expect(r.collections).toHaveLength(1)
+  })
+
+  it('returns empty arrays when server returns empty arrays', async () => {
+    installFetchMock({
+      '/tags': { body: [] },
+      '/projects': { body: [] },
+      '/collections': { body: [] },
+    })
+    const r = await listSelectors()
+    expect(r.ok).toBe(true)
+    if (!r.ok) throw new Error('expected ok')
+    expect(r.tags).toEqual([])
+    expect(r.projects).toEqual([])
+    expect(r.collections).toEqual([])
+  })
+})
+
+describe('listSelectors — signed-out collapses to one reason', () => {
+  it('returns signed-out when /tags is 503', async () => {
+    installFetchMock({
+      '/tags': { status: 503, body: { message: 'Milton is not signed in' } },
+      '/projects': { body: [] },
+      '/collections': { body: [] },
+    })
+    const r = await listSelectors()
+    expect(r.ok).toBe(false)
+    if (r.ok) throw new Error('expected error')
+    expect(r.reason).toBe('signed-out')
+  })
+
+  it('returns signed-out when /projects is 503', async () => {
+    installFetchMock({
+      '/tags': { body: [] },
+      '/projects': { status: 503, body: { message: 'Milton is not signed in' } },
+      '/collections': { body: [] },
+    })
+    const r = await listSelectors()
+    expect(r.ok).toBe(false)
+    if (r.ok) throw new Error('expected error')
+    expect(r.reason).toBe('signed-out')
+  })
+
+  it('returns signed-out when all three are 503', async () => {
+    installFetchMock({
+      '/tags': { status: 503, body: { message: 'Milton is not signed in' } },
+      '/projects': { status: 503, body: { message: 'Milton is not signed in' } },
+      '/collections': { status: 503, body: { message: 'Milton is not signed in' } },
+    })
+    const r = await listSelectors()
+    expect(r.ok).toBe(false)
+    if (r.ok) throw new Error('expected error')
+    expect(r.reason).toBe('signed-out')
+  })
+})
+
+describe('listSelectors — partial-failure', () => {
+  it('reports null for projects on network-error, ok for tags + collections', async () => {
+    installFetchMock({
+      '/tags': { body: [{ id: 't1', name: 'A' }] },
+      '/projects': { throwError: true },
+      '/collections': { body: [{ id: 'c1', name: 'X' }] },
+    })
+    const r = await listSelectors()
+    expect(r.ok).toBe(false)
+    if (r.ok) throw new Error('expected error')
+    expect(r.reason).toBe('partial-failure')
+    if (r.reason !== 'partial-failure') throw new Error('expected partial-failure')
+    expect(r.tags).toHaveLength(1)
+    expect(r.projects).toBeNull()
+    expect(r.collections).toHaveLength(1)
+  })
+
+  it('reports null for tags on 500, ok for projects + collections', async () => {
+    installFetchMock({
+      '/tags': { status: 500, body: { message: 'oops' } },
+      '/projects': { body: [{ id: 'p1', title: 'T', status: 'wip' }] },
+      '/collections': { body: [] },
+    })
+    const r = await listSelectors()
+    expect(r.ok).toBe(false)
+    if (r.ok || r.reason !== 'partial-failure') throw new Error('expected partial-failure')
+    expect(r.tags).toBeNull()
+    expect(r.projects).toHaveLength(1)
+    expect(r.collections).toEqual([])
+  })
+
+  it('reports null for collections on malformed JSON', async () => {
+    installFetchMock({
+      '/tags': { body: [] },
+      '/projects': { body: [] },
+      '/collections': { malformedJson: true },
+    })
+    const r = await listSelectors()
+    expect(r.ok).toBe(false)
+    if (r.ok || r.reason !== 'partial-failure') throw new Error('expected partial-failure')
+    expect(r.tags).toEqual([])
+    expect(r.projects).toEqual([])
+    expect(r.collections).toBeNull()
+  })
+
+  it('reports null for tags when response is not an array', async () => {
+    installFetchMock({
+      '/tags': { body: { not: 'an array' } },
+      '/projects': { body: [] },
+      '/collections': { body: [] },
+    })
+    const r = await listSelectors()
+    expect(r.ok).toBe(false)
+    if (r.ok || r.reason !== 'partial-failure') throw new Error('expected partial-failure')
+    expect(r.tags).toBeNull()
+  })
+})
+
+describe('listSelectors — malformed-entry tolerance', () => {
+  it('drops a tag entry missing `name` but keeps the rest', async () => {
+    installFetchMock({
+      '/tags': {
+        body: [
+          { id: 't1', name: 'OK' },
+          { id: 't2' }, // missing name → dropped
+          { id: 't3', name: 'Also OK' },
+        ],
+      },
+      '/projects': { body: [] },
+      '/collections': { body: [] },
+    })
+    const r = await listSelectors()
+    expect(r.ok).toBe(true)
+    if (!r.ok) throw new Error('expected ok')
+    expect(r.tags).toHaveLength(2)
+    expect(r.tags.map((t) => t.id)).toEqual(['t1', 't3'])
+  })
+
+  it('ignores the project `status` field entirely (no longer part of the wire shape)', async () => {
+    // The status badge was cut in the Figma redesign (AC4 reconciled), so the
+    // parser keeps only { id, title } — any `status` value, or its absence, is
+    // tolerated as a forward-compat extra field rather than dropping the entry.
+    installFetchMock({
+      '/tags': { body: [] },
+      '/projects': {
+        body: [
+          { id: 'p1', title: 'T1', status: 'wip' },
+          { id: 'p2', title: 'T2', status: 'archived' }, // any value — ignored
+          { id: 'p3', title: 'T3' }, // status absent — also fine
+        ],
+      },
+      '/collections': { body: [] },
+    })
+    const r = await listSelectors()
+    expect(r.ok).toBe(true)
+    if (!r.ok) throw new Error('expected ok')
+    expect(r.projects).toHaveLength(3)
+    expect(r.projects.map((p) => p.id)).toEqual(['p1', 'p2', 'p3'])
+    expect((r.projects[0] as unknown as Record<string, unknown>).status).toBeUndefined()
+  })
+
+  it('ignores extra unknown fields on the wire (forward-compat)', async () => {
+    installFetchMock({
+      '/tags': {
+        body: [{ id: 't1', name: 'OK', extraFutureField: 'ignored', color: 'should-not-appear' }],
+      },
+      '/projects': { body: [] },
+      '/collections': { body: [] },
+    })
+    const r = await listSelectors()
+    expect(r.ok).toBe(true)
+    if (!r.ok) throw new Error('expected ok')
+    expect(r.tags[0]).toEqual({ id: 't1', name: 'OK' })
+    // No `color` field leaks into the parsed result — memory rule defended in code.
+    expect((r.tags[0] as unknown as Record<string, unknown>).color).toBeUndefined()
+  })
+})
+
+describe('listSelectors — preserves server-side ordering', () => {
+  it('does not re-sort projects (server returns updated_at DESC)', async () => {
+    installFetchMock({
+      '/tags': { body: [] },
+      '/projects': {
+        body: [
+          { id: 'p-recent', title: 'Z Most Recent', status: 'wip' },
+          { id: 'p-mid', title: 'M Middle', status: 'wip' },
+          { id: 'p-old', title: 'A Oldest', status: 'idea' },
+        ],
+      },
+      '/collections': { body: [] },
+    })
+    const r = await listSelectors()
+    expect(r.ok).toBe(true)
+    if (!r.ok) throw new Error('expected ok')
+    expect(r.projects.map((p) => p.id)).toEqual(['p-recent', 'p-mid', 'p-old'])
+  })
+})

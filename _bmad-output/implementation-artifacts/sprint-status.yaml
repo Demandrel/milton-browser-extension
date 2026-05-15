@@ -40,7 +40,7 @@ development_status:
   # extended payload (tagIds + newTagNames + projectIds + collectionIds) for
   # atomic transaction on Milton side. Tag chips via getTagColor(name) hash
   # function — NO color picker (memory rule: tags have no user-supplied color).
-  BE-2-rich-popup-selectors: backlog
+  BE-2-rich-popup-selectors: done
 
   # BE-3 (DEFERRED): Page-detection content script. Scans DOM (DOI in metadata,
   # OG type=article, known journal hosts) and surfaces a badge when academic

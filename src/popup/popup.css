@@ -1,24 +1,62 @@
-:root {
-  color-scheme: light dark;
-  --milton-bg: #ffffff;
-  --milton-fg: #1a1a1a;
-  --milton-muted: #6a6a6a;
-  --milton-accent: #2563eb;
-  --milton-accent-fg: #ffffff;
-  --milton-border: #e5e5e5;
-  --milton-success: #16a34a;
-  --milton-warn: #d97706;
-  --milton-error: #dc2626;
-  --milton-radius: 6px;
-}
+/* ──────────────────────────────────────────────────────────────────────────
+ * Milton browser-extension popup — visual system.
+ *
+ * BE-2 Task 12 (Figma redesign pass, 2026-05-14): implemented verbatim from
+ * the Figma frame Pierre drew for the popup (node 1323:8984, "Browser
+ * extension"). Tokens, type scale, the "Main info / Add to..." segmented tab
+ * control, the "Preview" + "Tags" cards, grey chips and the brand button are
+ * all lifted from that frame's Figma variables (Background/N + Text/N) and
+ * SN Pro type styles. Projects + Collections sections were removed entirely —
+ * they are not in the design (the connector still returns them; the popup
+ * just doesn't render them, and the selector arrays stay empty on Save).
+ *
+ * Font: SN Pro is Milton's brand font, BUT every `sn-pro-*.woff2` in the
+ * Milton repo is a corrupted HTML document, not a real font (TD-70). Until
+ * real woff2 files exist, the popup falls back to the system UI font. `'SN
+ * Pro'` is kept first in the stack so a future real-font drop works for free.
+ *
+ * Theme: the Figma is light-only, so the popup is light-only — no
+ * `prefers-color-scheme: dark` override.
+ * ────────────────────────────────────────────────────────────────────────── */
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --milton-bg: #1a1a1a;
-    --milton-fg: #f5f5f5;
-    --milton-muted: #a0a0a0;
-    --milton-border: #333333;
-  }
+:root {
+  color-scheme: light;
+
+  /* Backgrounds — Figma "Background/N" */
+  --milton-bg: #ffffff; /* Background/1 */
+  --milton-card: #f5f5f5; /* Background/3 */
+  --milton-track: #eeeeee; /* Background/4 — segmented-control track */
+  --milton-chip: #e5e5e5; /* Background/5 — tag chip */
+  --milton-brand: #0a0a0a; /* Background/brand */
+
+  /* Text — Figma "Text/N" */
+  --milton-fg: #0a0a0a; /* Text/primary */
+  --milton-fg-2: #525252; /* Text/secondary */
+  --milton-fg-3: #737373; /* Text/tertiary */
+  --milton-fg-4: #a3a3a3; /* Text/quaternary */
+  --milton-on-brand: #ffffff; /* Text/on brand */
+
+  /* Lines + surfaces sitting on a card */
+  --milton-border: #ebebeb; /* separator stroke */
+  --milton-border-focus: #d4d4d4; /* neutral-300 — focused-input stroke */
+  --milton-surface: #ffffff; /* inputs / active tab on a card */
+  --milton-neutral-700: #404040; /* duo-solid icon color (collections / projects) */
+
+  /* Status / feedback (not in the Figma frame — kept for non-happy states) */
+  --milton-success: #16a34a;
+  --milton-error: #dc2626;
+
+  /* Effects — Figma "Shadow/shadow-xs" (active segmented-control tab) */
+  --milton-shadow-xs: 0 1px 2px rgba(15, 15, 16, 0.05);
+
+  /* Radii — Figma */
+  --milton-radius-popup: 24px;
+  --milton-radius-tabs: 15px;
+  --milton-radius-tab: 12px;
+  --milton-radius-card: 14px;
+  --milton-radius-chip: 14px;
+  --milton-radius-btn: 14px;
+  --milton-radius-sm: 10px;
 }
 
 * {
@@ -29,98 +67,879 @@ html,
 body {
   margin: 0;
   padding: 0;
-  font-family:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu,
-    sans-serif;
-  font-size: 14px;
-  line-height: 1.45;
+  font-family: 'SN Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 15px;
+  line-height: 23px;
+  -webkit-font-smoothing: antialiased;
 }
 
 body {
-  min-width: 320px;
-  max-width: 480px;
+  /* Fixed 400×600 — the Figma frame size. A constant height means switching
+   * tabs (or a tab whose content doesn't fill the height) never resizes the
+   * popup window. 600px is also the browser's popup-height cap, so the popup
+   * never scrolls as a whole — overflowing content scrolls inside its region. */
+  width: 400px;
+  height: 600px;
   background: var(--milton-bg);
   color: var(--milton-fg);
 }
 
 .milton-popup-root {
+  height: 100%;
   padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  border-radius: var(--milton-radius-popup);
 }
 
-.milton-popup-header {
-  font-weight: 600;
+/* ── Segmented tab control (Figma node 1323:8985) ──────────────────────── */
+
+.milton-popup-tabs {
+  align-self: center;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--milton-track);
+  border-radius: var(--milton-radius-tabs);
+}
+
+.milton-popup-tab {
+  appearance: none;
+  width: 100px;
+  height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--milton-radius-tab);
+  background: transparent;
+  font-family: inherit;
   font-size: 15px;
-  margin: 0 0 4px;
+  font-weight: 600;
+  line-height: 22px;
+  letter-spacing: -0.4px;
+  color: var(--milton-fg-3);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.milton-popup-tab-active {
+  background: var(--milton-surface);
+  color: var(--milton-fg);
+  box-shadow: var(--milton-shadow-xs);
+}
+
+/* ── Preview content column (Figma node 1323:8990) ─────────────────────── */
+
+/* The popup shell is a fixed 600px: tabs pinned at the top, "Save to Milton"
+ * pinned at the bottom, and the content column (`.milton-popup-sections` /
+ * `.milton-popup-addto`) fills the space between and scrolls internally if a
+ * tab's content ever overflows (e.g. an expanded authors editor). */
+.milton-popup-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.milton-popup-sections {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.milton-popup-separator {
+  width: 100%;
+  height: 1px;
+  background: var(--milton-border);
+}
+
+/* ── Headers / shared ──────────────────────────────────────────────────── */
+
+.milton-popup-header {
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 28px;
+  letter-spacing: -0.4px;
+  margin: 0;
 }
 
 .milton-popup-url {
-  color: var(--milton-muted);
-  font-size: 12px;
+  color: var(--milton-fg-3);
+  font-size: 13px;
   word-break: break-all;
-  margin: 0 0 12px;
+  margin: 0;
 }
+
+/* ── Primary (brand) button ────────────────────────────────────────────── */
 
 .milton-popup-button {
   appearance: none;
   width: 100%;
-  padding: 10px 14px;
-  background: var(--milton-accent);
-  color: var(--milton-accent-fg);
+  height: 48px;
+  padding: 0 16px;
+  background: var(--milton-brand);
+  color: var(--milton-on-brand);
   border: 0;
-  border-radius: var(--milton-radius);
-  font-size: 14px;
-  font-weight: 500;
+  border-radius: var(--milton-radius-btn);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 23px;
+  letter-spacing: -0.4px;
   cursor: pointer;
+  text-align: center;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .milton-popup-button:hover:not(:disabled) {
-  filter: brightness(1.05);
+  opacity: 0.9;
 }
 
 .milton-popup-button:disabled {
-  background: var(--milton-border);
-  color: var(--milton-muted);
+  background: var(--milton-chip);
+  color: var(--milton-fg-4);
   cursor: not-allowed;
 }
 
-.milton-popup-button-secondary {
-  background: transparent;
-  color: var(--milton-fg);
-  border: 1px solid var(--milton-border);
+/* "Save to Milton" — 40px tall, pinned at the bottom of the fixed-height popup
+ * (a non-shrinking flex item below the scrollable content column), so it's
+ * always visible whatever a tab's content does. */
+.milton-popup-save {
+  flex: 0 0 auto;
+  height: 40px;
+  margin-top: 24px;
 }
 
+/* ── Secondary button ──────────────────────────────────────────────────── */
+
+.milton-popup-button-secondary {
+  appearance: none;
+  width: auto;
+  height: 36px;
+  padding: 0 14px;
+  background: var(--milton-surface);
+  color: var(--milton-fg);
+  border: 1px solid var(--milton-border);
+  border-radius: var(--milton-radius-sm);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.milton-popup-button-secondary:hover:not(:disabled) {
+  border-color: var(--milton-fg-3);
+}
+
+/* ── Helper / footnote / error / success / loading ─────────────────────── */
+
 .milton-popup-helper {
-  color: var(--milton-muted);
+  color: var(--milton-fg-3);
+  font-size: 13px;
+  line-height: 20px;
+  margin: 0;
+}
+
+.milton-popup-footnote {
+  color: var(--milton-fg-3);
   font-size: 12px;
-  margin: 8px 0 0;
+  margin: 0;
+}
+
+.milton-popup-footnote a {
+  color: var(--milton-fg-2);
+  text-underline-offset: 2px;
 }
 
 .milton-popup-error {
   color: var(--milton-error);
-  font-size: 12px;
-  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 20px;
+  margin: 0;
   word-break: break-word;
 }
 
 .milton-popup-error-detail {
   font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-  font-size: 11px;
-  color: var(--milton-muted);
+  font-size: 12px;
+  color: var(--milton-fg-3);
   display: block;
   margin-top: 4px;
 }
 
 .milton-popup-success {
   color: var(--milton-success);
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.4px;
   text-align: center;
-  padding: 24px 0;
+  padding: 28px 0;
 }
 
 .milton-popup-loading {
-  color: var(--milton-muted);
+  color: var(--milton-fg-3);
   text-align: center;
-  padding: 24px 0;
+  padding: 28px 0;
   margin: 0;
+}
+
+/* ── "Add to..." tab — collections / projects picker (Figma 1341:9327) ──── */
+
+.milton-popup-addto {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+.milton-popup-addto-title {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 26px;
+  letter-spacing: -0.4px;
+  color: var(--milton-fg);
+  margin: 0;
+}
+
+.milton-popup-addto-body {
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 23px;
+  letter-spacing: -0.4px;
+  color: var(--milton-fg-3);
+  margin: 0;
+}
+
+/* Collections / Projects sub-toggle (Figma node 1341:9439). */
+.milton-popup-addto-toggle {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--milton-track);
+  border-radius: 16px;
+}
+
+.milton-popup-addto-toggle-btn {
+  appearance: none;
+  flex: 1 1 0;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -0.4px;
+  color: var(--milton-fg-3);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.milton-popup-addto-toggle-btn-active {
+  background: var(--milton-surface);
+  color: var(--milton-fg);
+  box-shadow: var(--milton-shadow-xs);
+}
+
+.milton-popup-addto-label {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 26px;
+  letter-spacing: -0.4px;
+  color: var(--milton-fg);
+  margin: 0;
+}
+
+/* Search bar (Figma node 1341:9449). */
+.milton-popup-addto-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 12px;
+  background: var(--milton-track);
+  border-radius: 14px;
+  color: var(--milton-fg-2);
+}
+
+.milton-popup-addto-search-input {
+  appearance: none;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  outline: none;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 22px;
+  letter-spacing: -0.4px;
+  color: var(--milton-fg);
+}
+
+.milton-popup-addto-search-input::placeholder {
+  color: var(--milton-fg-2);
+}
+
+/* Scrollable list of collections / projects (Figma node 1341:9450). */
+.milton-popup-addto-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.milton-popup-addto-item {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  height: 36px;
+  padding: 4px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.milton-popup-addto-item:hover {
+  background: var(--milton-card);
+}
+
+.milton-popup-addto-item-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--milton-fg-2);
+}
+
+.milton-popup-addto-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 23px;
+  letter-spacing: -0.4px;
+}
+
+.milton-popup-icon {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
+/* Duo-solid collections / projects icons — painted neutral-700 regardless of
+ * the surrounding text color (Pierre 2026-05-15). */
+.milton-popup-icon-duo {
+  color: var(--milton-neutral-700);
+}
+
+.milton-popup-checkbox {
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  display: block;
+}
+
+/* ── Sections (Preview / Tags) ─────────────────────────────────────────── */
+
+.milton-popup-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.milton-popup-section-header {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 26px;
+  letter-spacing: -0.4px;
+  color: var(--milton-fg);
+  margin: 0;
+}
+
+.milton-popup-section-loading,
+.milton-popup-empty-section-note {
+  font-size: 13px;
+  color: var(--milton-fg-4);
+  margin: 0;
+  padding: 2px 0;
+}
+
+.milton-popup-empty-section-note {
+  font-style: italic;
+}
+
+/* ── Card surface (Figma "Menu" #f5f5f5, rounded 14, 6+16 / 6+10 inset) ── */
+
+.milton-popup-preview,
+.milton-popup-card {
+  display: flex;
+  flex-direction: column;
+  padding: 16px 22px;
+  background: var(--milton-card);
+  border-radius: var(--milton-radius-card);
+}
+
+/* The preview card is a compact 176px `min-height` for every read-only state
+ * (skeleton, loaded, no-metadata), so the popup doesn't shift when the
+ * metadata resolves. Kept short (abstract clamped to 2 lines) so the popup
+ * fits the browser's ~600px popup-height cap without scrolling. It carries NO
+ * scrollbar: the read-only rows fit inside 176px, and an expanded editor just
+ * grows the card — the editor's sub-fields scroll internally instead. */
+.milton-popup-preview {
+  gap: 8px;
+  min-height: 176px;
+}
+
+/* `position: relative` anchors the autocomplete dropdown; no `overflow: hidden`
+ * so the dropdown can float out over the surrounding content. */
+.milton-popup-card {
+  gap: 8px;
+  position: relative;
+}
+
+/* The chip row scrolls inside a capped region once tags wrap past ~2 lines —
+ * so the tags card (and therefore the whole popup) never grows past the
+ * browser's popup-height cap. The autocomplete dropdown is a SIBLING of this
+ * wrapper (a direct child of the non-clipping card), so it isn't clipped. */
+.milton-popup-tag-scroll {
+  max-height: 108px;
+  overflow-y: auto;
+}
+
+/* Loading skeleton — same fixed height, greyed bars mimicking the rows. */
+.milton-popup-preview-skeleton {
+  gap: 14px;
+}
+
+.milton-popup-skel {
+  flex: 0 0 auto;
+  background: var(--milton-chip);
+  border-radius: 6px;
+}
+
+.milton-popup-skel-title {
+  height: 24px;
+  width: 72%;
+}
+
+.milton-popup-skel-line {
+  height: 15px;
+  width: 56%;
+}
+
+.milton-popup-skel-short {
+  width: 34%;
+}
+
+.milton-popup-skel-abstract {
+  height: 46px;
+  width: 100%;
+  margin-top: 2px;
+}
+
+@keyframes milton-skel-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .milton-popup-preview-skeleton .milton-popup-skel {
+    animation: milton-skel-pulse 1.4s ease-in-out infinite;
+  }
+}
+
+/* no-metadata message — centred inside the same fixed-height card. */
+.milton-popup-preview-message {
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+}
+
+/* ── Preview metadata rows ─────────────────────────────────────────────── */
+
+.milton-popup-field-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  cursor: pointer;
+  padding: 0 8px;
+  margin: 0 -8px;
+  border-radius: var(--milton-radius-card);
+}
+
+/* Hover-to-edit affordance — one step darker than the card (Background/5). */
+.milton-popup-field-row:hover {
+  background: var(--milton-chip);
+}
+
+.milton-popup-field-row-static,
+.milton-popup-field-row-static:hover {
+  cursor: default;
+  background: transparent;
+}
+
+/* An editing row keeps the read-only row's horizontal label→input layout (the
+ * input sits to the RIGHT of the label, same x as the read-only value) — only
+ * the hover-to-edit affordance is suppressed. */
+.milton-popup-field-row-editing {
+  cursor: default;
+}
+
+.milton-popup-field-row-editing:hover {
+  background: transparent;
+}
+
+/* The authors editor is a multi-row list — it stacks below its label instead. */
+.milton-popup-field-row-editing-stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.milton-popup-field-row-empty {
+  color: var(--milton-fg-4);
+}
+
+/* Per-row gaps copied verbatim from the Figma label→value spacing:
+ * Author(s) 31px, Date 40px, Abstract 22px. */
+.milton-popup-row-author {
+  gap: 31px;
+}
+
+.milton-popup-row-date {
+  gap: 40px;
+}
+
+.milton-popup-row-abstract {
+  gap: 22px;
+  align-items: flex-start;
+}
+
+.milton-popup-field-label {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 23px;
+  letter-spacing: -0.4px;
+  color: var(--milton-fg-2);
+}
+
+.milton-popup-field-value {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 23px;
+  letter-spacing: -0.4px;
+  color: var(--milton-fg);
+  word-break: break-word;
+}
+
+.milton-popup-field-title {
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 28px;
+  /* Figma title is a single line (whitespace-nowrap); the full title is in the
+   * DOM + `title=` tooltip, and clicking the row opens it for editing. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.milton-popup-field-abstract {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.milton-popup-field-value em {
+  color: var(--milton-fg-4);
+  font-style: italic;
+  font-weight: 500;
+}
+
+.milton-popup-field-empty {
+  color: var(--milton-fg-4);
+  font-style: italic;
+  font-size: 15px;
+}
+
+/* ── Inline-edit inputs ────────────────────────────────────────────────── */
+
+.milton-popup-field-edit {
+  appearance: none;
+  width: 100%;
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 23px;
+  letter-spacing: -0.4px;
+  color: var(--milton-fg);
+  /* Design-system surface for inline-edit inputs: Background/5 + separator
+   * stroke (sits one step darker than the Background/3 preview card). */
+  background: var(--milton-chip);
+  border: 1px solid var(--milton-border);
+  border-radius: var(--milton-radius-sm);
+  outline: none;
+}
+
+.milton-popup-field-edit:focus {
+  border-color: var(--milton-border-focus);
+}
+
+/* Year input sits to the RIGHT of the "Date" label (not full width). */
+.milton-popup-field-year {
+  flex: 0 0 auto;
+  width: 120px;
+}
+
+/* Abstract is multi-line — a fixed-height textarea with its own scroll. It
+ * sits to the RIGHT of the "Abstract" label, filling the remaining width. */
+.milton-popup-field-edit-abstract {
+  flex: 1 1 0;
+  min-width: 0;
+  width: auto;
+  height: 116px;
+  resize: none;
+  line-height: 20px;
+  overflow-y: auto;
+}
+
+/* ── Authors edit ──────────────────────────────────────────────────────── */
+
+.milton-popup-author-edit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+/* The author rows scroll inside a capped region so a 40-author paper keeps
+ * the "Add author" / "Done" controls in view. */
+.milton-popup-author-edit-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 132px;
+  overflow-y: auto;
+}
+
+.milton-popup-author-edit-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.milton-popup-author-remove {
+  appearance: none;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--milton-border);
+  background: var(--milton-surface);
+  border-radius: var(--milton-radius-sm);
+  color: var(--milton-fg-3);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.milton-popup-author-remove:hover {
+  border-color: var(--milton-error);
+  color: var(--milton-error);
+}
+
+.milton-popup-author-add {
+  appearance: none;
+  padding: 6px 10px;
+  background: transparent;
+  border: 1px dashed var(--milton-border);
+  border-radius: var(--milton-radius-sm);
+  color: var(--milton-fg-3);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+.milton-popup-author-add:hover {
+  color: var(--milton-fg);
+  border-color: var(--milton-fg-3);
+}
+
+.milton-popup-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+/* ── Tag chips (Figma node 1323:9016) ──────────────────────────────────── */
+
+.milton-popup-tag-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+/* The tag field IS the chip row — chips followed by an invisible inline input
+ * that flex-grows to fill the rest of the line (Dribbble pattern). No bordered
+ * input row; the whole field reads as text-editable. */
+.milton-popup-tag-field {
+  cursor: text;
+}
+
+.milton-popup-tag-input {
+  appearance: none;
+  flex: 1 1 90px;
+  min-width: 90px;
+  height: 40px;
+  padding: 0 4px;
+  font-family: inherit;
+  /* Typed tag text — Figma "Text/Medium/medium" in Text/primary (black). */
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 23px;
+  letter-spacing: -0.4px;
+  color: var(--milton-fg);
+  background: transparent;
+  border: 0;
+  outline: none;
+}
+
+.milton-popup-tag-input::placeholder {
+  color: var(--milton-fg-4);
+}
+
+/* Figma chip: a flat neutral grey pill — name + × icon, no color dot. */
+.milton-popup-tag-chip {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 12px;
+  background: var(--milton-chip);
+  border: 0;
+  border-radius: var(--milton-radius-chip);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 23px;
+  letter-spacing: -0.4px;
+  color: var(--milton-fg);
+  cursor: pointer;
+  max-width: 100%;
+}
+
+.milton-popup-tag-chip:hover {
+  opacity: 0.85;
+}
+
+/* Autocomplete dropdown — matching EXISTING tags surface as a click-to-select
+ * menu as the user types. It FLOATS (position: absolute) so it never changes
+ * the popup height — it opens DOWNWARD just below the tags card, overlaying
+ * whatever sits beneath it. */
+.milton-popup-tag-options {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  background: var(--milton-surface);
+  border: 1px solid var(--milton-border);
+  border-radius: var(--milton-radius-card);
+  box-shadow: 0 8px 24px rgba(15, 15, 16, 0.14);
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.milton-popup-tag-option {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 8px 10px;
+  background: transparent;
+  border: 0;
+  border-radius: var(--milton-radius-sm);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -0.4px;
+  color: var(--milton-fg);
+  cursor: pointer;
+  text-align: left;
+}
+
+.milton-popup-tag-option:hover,
+.milton-popup-tag-option-active {
+  background: var(--milton-chip);
+}
+
+.milton-popup-tag-name {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.milton-popup-tag-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--milton-fg-4);
+}
+
+.milton-popup-tag-chip-selected:hover .milton-popup-tag-remove {
+  color: var(--milton-fg-2);
+}
+
+.milton-popup-x-icon {
+  width: 16px;
+  height: 16px;
+  display: block;
 }
