@@ -13,12 +13,14 @@ export default defineManifest({
     default_title: 'Save to Milton',
     default_icon: {
       '16': 'src/assets/icons/16.png',
+      '32': 'src/assets/icons/32.png',
       '48': 'src/assets/icons/48.png',
       '128': 'src/assets/icons/128.png',
     },
   },
   icons: {
     '16': 'src/assets/icons/16.png',
+    '32': 'src/assets/icons/32.png',
     '48': 'src/assets/icons/48.png',
     '128': 'src/assets/icons/128.png',
   },
