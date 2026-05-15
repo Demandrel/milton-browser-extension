@@ -1,32 +1,67 @@
-# generated: 2026-05-04
+# generated: 2026-05-15
 # project: Milton Browser Extension
 # project_key: browser-extension
 # tracking_system: file-system
 # story_location: tools/browser-extension/_bmad-output/implementation-artifacts
 #
 # PURPOSE:
-# Chromium MV3 browser extension that captures academic-page metadata via the
-# self-hosted Zotero translation-server (translate.milton.so) and posts it to
-# Milton's local connector (127.0.0.1:7521). Companion to:
-#   - 17-5 (Milton local connector server)
-#   - 18-1 (extended payload contract: tags / projects / collections)
-#   - TS-2 / TS-3 / TS-5 (translation-server validation + production deploy)
+# Chromium MV3 browser extension. Sprint 1 (MV1) shipped a URL-forwarder
+# capture extension via the self-hosted Zotero translation-server
+# (translate.milton.so) → Milton's local connector (127.0.0.1:7521).
+# Sprint 2 (BE-8) pivots to a Zotero-Connector-style architecture:
+# browser-side translator runtime + Milton-client. Closes the Class 2/3
+# capture gap (Cloudflare / Anubis bot-protected publishers).
 #
-# STORY PREFIX: BE-N
-# STORY STATUS: backlog | ready-for-dev | in-progress | review | done
+# Companion / predecessor stories in the main Milton-saas sprint-status:
+#   - 17-5  Milton local connector server
+#   - 18-1  extended payload contract (tags / projects / collections)
+#   - TS-2 / TS-3 / TS-5  translation-server validation + production deploy
+#   - TS-6  EdDSA JWT auth proxy (BE-4 consumer)
 #
-# Charter: tools/browser-extension/_bmad-output/planning-artifacts/charter.md
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on (stories being created/implemented)
+#   - done: All stories in epic completed
+#
+# Story Status:
+#   - backlog: Story only exists in charter/epic file
+#   - ready-for-dev: Story file created in this folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Implementation complete, ready for code review
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - SM typically creates next story ONLY after previous one is 'done'
+# - Dev moves story to 'review', then runs code-review (fresh context)
+#
+# STORY PREFIX: BE-N (Sprint 1) · BE-8-N (Sprint 2)
+#
+# Charters:
+#   Sprint 1: tools/browser-extension/_bmad-output/planning-artifacts/charter.md
+#            (SUPERSEDED by charter-v2.md per 2026-05-15)
+#   Sprint 2: tools/browser-extension/_bmad-output/planning-artifacts/charter-v2.md
+#            Brief: _bmad-output/planning-artifacts/product-brief-browser-extension-v2-2026-05-15.md
 
-generated: 2026-05-04
+generated: 2026-05-15
 project: Milton Browser Extension
 project_key: browser-extension
 tracking_system: file-system
 story_location: tools/browser-extension/_bmad-output/implementation-artifacts
 
 development_status:
-  # Sprint 1: MV1 (Pierre Q1–Q9 charter, 2026-05-04)
-  # Goal: dogfoodable .crx that captures refs from any academic page,
-  # supports tags / projects / collections, gracefully handles signed-out state.
+  # ──────────────────────────────────────────────────────────────────────────
+  # Sprint 1: MV1 (charter.md — SUPERSEDED)
+  # Goal: dogfoodable .crx that captures refs from any academic page, supports
+  # tags / projects / collections, gracefully handles signed-out state.
+  # ──────────────────────────────────────────────────────────────────────────
 
   # BE-1: Scaffold + connector client + signed-out detection + sideload package.
   # Vite + CRXJS + TS scaffold; manifest V3; toolbar button → minimal popup →
@@ -68,3 +103,94 @@ development_status:
   # Epic 19 Story 19-5 (parallel session) — 19-5 defers tests on connector/payload.rs,
   # connector/handlers.rs, commands/pdf_fetch.rs until BE-7 lands.
   BE-7-pdf-attach-on-extension-save: done
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Sprint 2: BE-8 (Browser Extension v2 — Zotero-Connector pivot)
+  # Charter: tools/browser-extension/_bmad-output/planning-artifacts/charter-v2.md
+  # Brief:   _bmad-output/planning-artifacts/product-brief-browser-extension-v2-2026-05-15.md
+  # North star: Pierre uninstalls Zotero Connector after a week of BE-v2 dogfood.
+  # 4 ship gates: coverage (per-class) · regression (zero BE-7 sites broken) ·
+  #               cost · LLM-fallback (Marc's long-tail test).
+  # Risk-staircase ordered (greenfield → integration spike → architectural).
+  # ──────────────────────────────────────────────────────────────────────────
+
+  epic-be-8: backlog
+
+  # BE-8-1: Translator-mirror CDN setup. Cloudflare CDN + static origin
+  # (R2 or KV); mirrors zotero/translators subset; metadata endpoint
+  # (versioning + translator-id → bytes); pinned-at-build pull for bundled
+  # subset. Low risk. No deps. Parallelizable with BE-8-2, BE-8-3.
+  # Theme: Capture parity.
+  BE-8-1-translator-mirror-cdn-setup: backlog
+
+  # BE-8-2: Connector bytes endpoint. POST /references/{id}/pdf-bytes
+  # (multipart binary); ~50 MiB body cap; SSRF + size limits; tests.
+  # Low risk. No deps. Parallelizable with BE-8-1, BE-8-3.
+  # Theme: Capture parity.
+  BE-8-2-connector-bytes-endpoint: backlog
+
+  # BE-8-3: Extension extracted to public AGPL repo (charter Decision A1).
+  # New public repo (slug TBD: Demandrel/milton-browser-extension or similar);
+  # AGPL-3.0-or-later COPYING + per-file headers; CI replicated; BE-1/2/7
+  # code moved with git filter-repo (history preserved); tools/browser-extension/
+  # in Milton-saas becomes deprecated stub pointing to new repo.
+  # Low-medium risk. No deps. Parallelizable with BE-8-1, BE-8-2.
+  # Theme: License execution.
+  BE-8-3-extension-extracted-to-public-agpl-repo: backlog
+
+  # BE-8-4: Translator runtime lift. Import zotero/translate as AGPL submodule
+  # into extracted repo; implement required Zotero.Translators / Zotero.HTTP /
+  # Zotero.Translate.ItemSaver; schema init; sandbox-page integration for
+  # MV3 CSP. Includes integration-spike sub-task (one publisher end-to-end
+  # before scaling — recommend arXiv per charter Risks table).
+  # Medium-high risk. Depends on BE-8-3.
+  # Theme: Capture parity.
+  BE-8-4-translator-runtime-lift: backlog
+
+  # BE-8-5: Curated translator bundle (~50-100 publishers) + lazy CDN-fetch.
+  # Build pipeline bundles top publishers (Elsevier suite, Wiley, Springer
+  # Nature, arXiv, PubMed, SSRN, RePEc, econstor, JSTOR, IEEE, ACM, Sage,
+  # T&F, Nature, Cell Press, bioRxiv, medRxiv, ...) into .crx; runtime
+  # CDN-fetch fallback for long-tail; translator registry tracks
+  # bundled-vs-fetched state and gracefully falls back.
+  # Medium risk. Depends on BE-8-1, BE-8-4.
+  # Theme: Capture parity.
+  BE-8-5-curated-translator-bundle-and-lazy-cdn-fetch: backlog
+
+  # BE-8-6: Class 3 capture flow. Extension runs translator in page context
+  # via chrome.scripting.executeScript; POSTs structured item JSON (NOT URL)
+  # to POST /references; popup state-machine extended with
+  # translator-running / translator-done / translator-fallback states.
+  # Medium-high risk. Depends on BE-8-4, BE-8-5.
+  # Theme: Capture parity.
+  BE-8-6-class-3-capture-flow: backlog
+
+  # BE-8-7: Class 2 capture + paste-failure UX. Extension fetches PDF bytes
+  # client-side using user's session (same-origin fetch within tab context —
+  # no chrome.cookies access needed); two-step IPC (BE-8-2 endpoint); popup
+  # progress UI for upload. PLUS: Milton-desktop surfaces "Install Milton
+  # browser extension" error + deep-link CTA when translate.milton.so
+  # returns a "site requires browser context" failure.
+  # High risk. Depends on BE-8-2, BE-8-6.
+  # Theme: Capture parity.
+  BE-8-7-class-2-capture-and-paste-failure-ux: backlog
+
+  # BE-8-8: LLM-fallback in Milton-desktop. Rust calls Anthropic via
+  # Milton-server key broker (/api/llm/extract relay — desktop never sees
+  # the API key); trigger thresholds (PDF-only with no embedded metadata;
+  # translator returns <N fields; user-flagged "this looks incomplete");
+  # one-time opt-in consent; Pro-tier gate; per-call cost ceiling +
+  # per-user monthly cap; PostHog ai_extraction_used event.
+  # High risk. Depends on BE-8-7 (needs Class 2 PDF surface for E2E test).
+  # Theme: LLM-fallback differentiation.
+  BE-8-8-llm-fallback-in-milton-desktop: backlog
+
+  # BE-8-9: Server downscale + GROBID retire. Migrate translate.milton.so to
+  # smaller hosting (small VPS / Fly free / Cloudflare Worker — operational
+  # call at execution); remove GROBID; verify Class 1 + DOI/Crossref +
+  # LLM-key-broker still work; cost-tracking dashboard.
+  # Low-medium risk. Depends on BE-8-8.
+  # Theme: Server downsize.
+  BE-8-9-server-downscale-and-grobid-retire: backlog
+
+  epic-be-8-retrospective: optional
