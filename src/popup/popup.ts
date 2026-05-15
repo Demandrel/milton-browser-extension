@@ -15,6 +15,7 @@ import type {
 import {
   blankEditable,
   decideTagInputEnter,
+  detectPdfPage,
   editableToMapperInput,
   filterTagSuggestions,
   formatAuthorsDisplay,
@@ -113,6 +114,10 @@ let currentUrl: string | undefined
 // The browser tab's own <title>, captured at boot — used as the title for an
 // "instant Save" when the user saves before the metadata fetch completes.
 let currentTabTitle: string | undefined
+// BE-7: the active tab's reported MIME type. Used (alongside the URL suffix)
+// to decide whether the page IS a PDF; when true, save() sends `pdfUrl` so
+// the Milton connector can fetch + attach the binary server-side.
+let currentTabMimeType: string | undefined
 
 void boot()
 
@@ -121,6 +126,10 @@ async function boot() {
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true })
   const url = tabs[0]?.url
   currentTabTitle = tabs[0]?.title
+  // BE-7: capture the tab's reported MIME type for PDF detection at save time.
+  // Field declared via local augmentation in `src/chrome-augment.d.ts`
+  // (the pinned `@types/chrome` doesn't surface it yet).
+  currentTabMimeType = tabs[0]?.mimeType
   if (!url || url === 'about:blank') {
     setState({ kind: 'cannot-capture', reason: 'no-url' })
     return
@@ -1232,6 +1241,13 @@ async function save(): Promise<void> {
   payload.newTagNames = newTagNames
   payload.projectIds = projectIds
   payload.collectionIds = collectionIds
+
+  // BE-7: when the active tab IS a PDF, pass its URL so Milton's connector can
+  // download + attach the binary server-side. Silent best-effort — no popup
+  // UI affordance; SSRF validation happens on the connector side (AC9).
+  if (detectPdfPage(currentUrl, currentTabMimeType)) {
+    payload.pdfUrl = currentUrl
+  }
 
   setState({ kind: 'posting', payload })
   const result = await createReference(payload)

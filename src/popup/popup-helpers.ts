@@ -146,6 +146,48 @@ export function isTitleValid(editable: EditableMetadata): boolean {
   return editable.title.trim().length > 0
 }
 
+/**
+ * BE-7: detect whether the active tab is itself a PDF document.
+ *
+ * Two signals, in order of preference:
+ *   1. `mimeType === 'application/pdf'` — Chrome's built-in PDF viewer
+ *      surfaces this on the `tabs.Tab` object; content-type-true so it
+ *      catches PDFs served from non-`.pdf` URLs (e.g. `/download?file=...`).
+ *   2. URL suffix `.pdf` (after stripping `?...` query + `#...` hash) — used
+ *      as a fallback when mimeType is undefined or non-PDF (some Chromium
+ *      builds omit `mimeType` for non-PDF tabs).
+ *
+ * Deliberately rejects `.pdf.html` (substring match would false-positive;
+ * the trailing-suffix check fires only on exact `.pdf` ending) and
+ * `chrome://`, `chrome-extension://`, `about:` URLs (those don't reach the
+ * popup's preview state in the first place, but defensively handled here so
+ * the helper is safe in isolation).
+ */
+export function detectPdfPage(url: string, mimeType?: string): boolean {
+  if (mimeType === 'application/pdf') return true
+  if (!url) return false
+  // Reject restricted-URL schemes defensively (popup boot already blocks these,
+  // but the helper is exported and must be safe to call standalone).
+  const lower = url.toLowerCase()
+  if (
+    lower.startsWith('chrome://') ||
+    lower.startsWith('chrome-extension://') ||
+    lower.startsWith('about:') ||
+    lower.startsWith('edge://') ||
+    lower.startsWith('brave://') ||
+    lower.startsWith('file://')
+  ) {
+    return false
+  }
+  // Strip query (`?...`) and fragment (`#...`) before suffix-checking so URLs
+  // like `https://host/paper.pdf?download=true` flag correctly.
+  const queryIdx = lower.indexOf('?')
+  const hashIdx = lower.indexOf('#')
+  const cutAt = [queryIdx, hashIdx].filter((i) => i >= 0).reduce((a, b) => Math.min(a, b), lower.length)
+  const path = lower.slice(0, cutAt)
+  return path.endsWith('.pdf')
+}
+
 export const POPUP_HELPERS_CONSTANTS = {
   CURRENT_YEAR,
   MIN_YEAR,

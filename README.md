@@ -1,6 +1,6 @@
 # Milton Browser Extension
 
-**Status:** BE-1 scaffold + BE-4 auth migration + BE-2 rich popup UX (incl. Figma redesign pass) shipped. Functional end-to-end against current prod. BE-3 backlog.
+**Status:** BE-1 scaffold + BE-4 auth migration + BE-2 rich popup UX (incl. Figma redesign pass) + BE-7 auto-attach PDF on PDF pages shipped. Functional end-to-end against current prod. BE-3 backlog.
 
 ## What this does
 
@@ -108,7 +108,7 @@ Step-by-step to install the extension in Chrome / Edge / Brave:
    - Click **Save** in the popup
    - The reference appears in Milton with a "Reference added from browser" toast
 
-## Smoke test (BE-4 + BE-2 gate)
+## Smoke test (BE-4 + BE-2 + BE-7 gate)
 
 | Scenario | Expected outcome |
 |---|---|
@@ -122,6 +122,10 @@ Step-by-step to install the extension in Chrome / Edge / Brave:
 | Delete a project in Milton, then click Save in popup with that project selected | 400 "Invalid project ID" with the deleted id in monospace |
 | Empty title (clear in inline edit) | Save button disabled; "Title is required" helper shown |
 | Cmd+Enter from inside any edit field | Triggers Save when title non-empty |
+| **BE-7** `https://www.econstor.eu/bitstream/10419/32581/1/623739976.pdf` (Pierre's repro) | Reference created; PDF downloads + attaches within ~30s; library shows attached file. |
+| **BE-7** `https://arxiv.org/pdf/2303.08774.pdf` (arXiv direct PDF) | Reference created; PDF attached via the new direct path (`source: extension_direct` in PostHog). |
+| **BE-7** `https://arxiv.org/abs/2303.08774` (arXiv abs page — HTML) | Reference created; PDF attached via the EXISTING OA-discovery path (`source: arxiv`) — confirms `maybe_spawn_auto_fetch` now fires from the connector. |
+| **BE-7** Page with `.pdf.html` filename | Reference created; no direct-fetch attempted (mimeType `text/html` correctly rejected). |
 
 ## Charter + sprint
 
@@ -166,3 +170,4 @@ pnpm test                         # vitest run
 | BE-4 | Auth migration — connector token + JWT to translation-server | shipped |
 | BE-2 | Rich popup UX (metadata preview + tag / project / collection selectors) | shipped |
 | BE-3 | Page-detection content script | backlog (deferred) |
+| BE-7 | Auto-attach PDF when saving from a PDF page (silent best-effort via new connector `pdfUrl` field + SSRF-defensive direct fetch) | shipped |

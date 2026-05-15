@@ -4,6 +4,7 @@ import type { EditableMetadata, MetadataAuthor, MetadataPrimary, TagSummary } fr
 import {
   blankEditable,
   decideTagInputEnter,
+  detectPdfPage,
   editableToMapperInput,
   filterTagSuggestions,
   formatAuthorsDisplay,
@@ -327,6 +328,69 @@ describe('blankEditable', () => {
 })
 
 // ── isTitleValid ──────────────────────────────────────────────────────────
+
+// ── detectPdfPage (BE-7) ──────────────────────────────────────────────────
+
+describe('detectPdfPage', () => {
+  it('returns true when mimeType is application/pdf (canonical signal)', () => {
+    expect(detectPdfPage('https://host/download?id=623', 'application/pdf')).toBe(true)
+  })
+
+  it('returns true for .pdf URL suffix when mimeType is absent', () => {
+    expect(detectPdfPage('https://www.econstor.eu/.../623739976.pdf', undefined)).toBe(true)
+    expect(detectPdfPage('https://arxiv.org/pdf/2303.08774.pdf')).toBe(true)
+  })
+
+  it('strips query string before checking .pdf suffix', () => {
+    expect(detectPdfPage('https://host/paper.pdf?download=true', undefined)).toBe(true)
+    expect(detectPdfPage('https://host/paper.pdf#page=4', undefined)).toBe(true)
+    expect(detectPdfPage('https://host/paper.pdf?download=true#page=4', undefined)).toBe(true)
+  })
+
+  it('returns false for .pdf.html (substring trap)', () => {
+    expect(detectPdfPage('https://host/index.pdf.html', undefined)).toBe(false)
+    expect(detectPdfPage('https://host/paper.pdf.html', 'text/html')).toBe(false)
+  })
+
+  it('returns false for plain HTML article URLs', () => {
+    expect(detectPdfPage('https://arxiv.org/abs/2303.08774', 'text/html')).toBe(false)
+    expect(detectPdfPage('https://www.nature.com/articles/s41586-021-03819-2', undefined)).toBe(false)
+  })
+
+  it('rejects restricted-URL schemes defensively', () => {
+    expect(detectPdfPage('chrome://settings/', undefined)).toBe(false)
+    expect(detectPdfPage('chrome-extension://abc/popup.html', undefined)).toBe(false)
+    expect(detectPdfPage('about:blank', undefined)).toBe(false)
+    expect(detectPdfPage('file:///tmp/paper.pdf', undefined)).toBe(false)
+    expect(detectPdfPage('edge://flags/', undefined)).toBe(false)
+    expect(detectPdfPage('brave://settings/', undefined)).toBe(false)
+  })
+
+  it('is case-insensitive on the suffix check', () => {
+    expect(detectPdfPage('https://host/paper.PDF', undefined)).toBe(true)
+    expect(detectPdfPage('https://host/Paper.Pdf?x=1', undefined)).toBe(true)
+  })
+
+  it('mimeType wins over suffix mismatch (PDF served at non-.pdf URL)', () => {
+    // econstor-style: /bitstream/.../123.pdf is the typical case, but some
+    // hosts serve PDFs from `/download?file=...` paths. mimeType saves us.
+    expect(detectPdfPage('https://host/download?file=623739976', 'application/pdf')).toBe(true)
+  })
+
+  it('returns false for empty URL', () => {
+    expect(detectPdfPage('', 'application/pdf')).toBe(true) // mimeType still wins
+    expect(detectPdfPage('', undefined)).toBe(false)
+    expect(detectPdfPage('', 'text/html')).toBe(false)
+  })
+
+  it('mimeType:text/html on a .pdf URL: mimeType does NOT win, suffix still flags', () => {
+    // This case: a host that serves PDFs with Content-Type: text/html (broken
+    // server). mimeType !== 'application/pdf' so signal 1 misses; signal 2
+    // (suffix) catches. Downstream magic-byte check on the server side is the
+    // final safety net.
+    expect(detectPdfPage('https://host/paper.pdf', 'text/html')).toBe(true)
+  })
+})
 
 describe('isTitleValid', () => {
   const base: EditableMetadata = {

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { listSelectors } from './connector-client'
+import { createReference, listSelectors } from './connector-client'
+import type { ConnectorReferencePayload } from './types'
 
 // ── fetch mock helpers ─────────────────────────────────────────────────────
 //
@@ -236,6 +237,67 @@ describe('listSelectors — malformed-entry tolerance', () => {
     expect(r.tags[0]).toEqual({ id: 't1', name: 'OK' })
     // No `color` field leaks into the parsed result — memory rule defended in code.
     expect((r.tags[0] as unknown as Record<string, unknown>).color).toBeUndefined()
+  })
+})
+
+// ── createReference: BE-7 pdfUrl payload ───────────────────────────────────
+
+describe('createReference — pdfUrl payload (BE-7)', () => {
+  // Capture the actual JSON body the extension sends so we can assert pdfUrl
+  // round-trips through createReference unchanged.
+  function captureBody(): {
+    capture: { body: unknown }
+    install: () => void
+  } {
+    const capture: { body: unknown } = { body: undefined }
+    const install = () => {
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => {
+        const raw = (init?.body as string | undefined) ?? '{}'
+        capture.body = JSON.parse(raw)
+        return new Response(JSON.stringify({ id: 'ref-abc' }), {
+          status: 201,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      })
+    }
+    return { capture, install }
+  }
+
+  it('sends pdfUrl when the popup sets it (PDF page scenario)', async () => {
+    const { capture, install } = captureBody()
+    install()
+    const payload: ConnectorReferencePayload = {
+      title: 'Working Paper',
+      authors: [],
+      url: 'https://www.econstor.eu/.../623739976.pdf',
+      pdfUrl: 'https://www.econstor.eu/.../623739976.pdf',
+      tagIds: [],
+      newTagNames: [],
+      projectIds: [],
+      collectionIds: [],
+    }
+    const r = await createReference(payload)
+    expect(r.ok).toBe(true)
+    const body = capture.body as Record<string, unknown>
+    expect(body.pdfUrl).toBe('https://www.econstor.eu/.../623739976.pdf')
+    expect(body.url).toBe('https://www.econstor.eu/.../623739976.pdf')
+  })
+
+  it('omits pdfUrl when popup did not set it (HTML article scenario)', async () => {
+    const { capture, install } = captureBody()
+    install()
+    const payload: ConnectorReferencePayload = {
+      title: 'Article',
+      authors: [],
+      url: 'https://www.nature.com/articles/s41586-021-03819-2',
+      tagIds: [],
+      newTagNames: [],
+      projectIds: [],
+      collectionIds: [],
+    }
+    await createReference(payload)
+    const body = capture.body as Record<string, unknown>
+    expect('pdfUrl' in body).toBe(false)
   })
 })
 

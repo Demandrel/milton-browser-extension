@@ -110,6 +110,14 @@ export interface ConnectorReferencePayload {
   newTagNames: string[]
   projectIds: string[]
   collectionIds: string[]
+  // Story BE-7: optional direct PDF URL. Set when the active tab is itself a
+  // PDF (`mimeType: 'application/pdf'` or `.pdf` URL suffix). Milton's
+  // connector handler spawns a fire-and-forget download + race-safe attach
+  // after creating the reference. SSRF-validated (scheme allowlist + IP
+  // blocklist + per-redirect re-check) on the connector side. Absent when
+  // the page is not a PDF; the existing `maybe_spawn_auto_fetch` OA-discovery
+  // path still handles refs with a DOI.
+  pdfUrl?: string
 }
 
 export type ConnectorAuthor =

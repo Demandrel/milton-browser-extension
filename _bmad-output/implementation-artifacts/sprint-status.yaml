@@ -56,3 +56,15 @@ development_status:
   # 4-state popup matrix: signed-in / signed-out / Milton-closed / Milton-not-installed.
   # Hard-blocks production Web Store distribution until shipped.
   BE-4-auth-migration-connector-token: done
+
+  # BE-7: Auto-attach PDF when saving from a PDF page. BE-2 dogfood (2026-05-15)
+  # net-export pinned two architectural gaps: (1) connector::handlers::add_reference
+  # never called maybe_spawn_auto_fetch (asymmetry vs IPC create_reference's
+  # post-15-1a behavior); (2) auto_fetch_pdf_inner is OA-discovery only, can't
+  # handle direct PDF URLs (working papers, econstor, repository PDFs). BE-7
+  # ships both: closes the asymmetry AND adds a new direct-URL fetch path via
+  # a new ConnectorReferencePayload.pdfUrl field. Silent best-effort — no popup
+  # UI affordance. First BE-N to cross into milton/src-tauri/. Coordinated with
+  # Epic 19 Story 19-5 (parallel session) — 19-5 defers tests on connector/payload.rs,
+  # connector/handlers.rs, commands/pdf_fetch.rs until BE-7 lands.
+  BE-7-pdf-attach-on-extension-save: review

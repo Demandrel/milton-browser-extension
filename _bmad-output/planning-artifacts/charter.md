@@ -1,6 +1,8 @@
 # Milton Browser Extension — Charter
 
-**Status:** charter, CONFIRMED via Pierre Q1–Q9 (2026-05-04)
+> ⚠️ **SUPERSEDED 2026-05-15 — pending Charter v2.** BE-2 and BE-7 dogfood empirically invalidated this charter's core architecture assumption (URL-only extension forwarding to server-side `translate.milton.so`). Cloudflare bot-management (Elsevier / ScienceDirect / Wiley / Springer) and Anubis (econstor) gate non-browser HTTP clients at the network layer — Milton's server cannot fetch metadata or PDFs from these sites regardless of translator quality. Zotero's Connector solves this by running translators in the user's browser context. **Charter v2 will pivot to the Zotero-Connector model** (AGPL extension + closed-source Milton-desktop over IPC, per `_bmad-output/research/zotero-architecture-research-2026-05-15.md`). DO NOT use this v1 charter as canonical scope for BE-8+. Read `_bmad-output/planning-artifacts/be-8-pivot-handoff.md` first.
+
+**Status (v1):** charter, CONFIRMED via Pierre Q1–Q9 (2026-05-04). **Superseded 2026-05-15.**
 **Drafted:** 2026-05-04 by BMad Master
 **Sprint:** `tools/browser-extension/_bmad-output/implementation-artifacts/sprint-status.yaml`
 
@@ -59,7 +61,7 @@ Browser tab (any URL)
 ## Out of scope (v1)
 
 - Firefox build (separate sprint — MV3 differences + AMO review)
-- PDF binary upload from extension (Milton's 15-1a auto-fetch handles OA-PDF download server-side)
+- ~~PDF binary upload from extension (Milton's 15-1a auto-fetch handles OA-PDF download server-side)~~ — **SUPERSEDED by BE-7 (2026-05-15).** BE-2 dogfood found two gaps the original assumption missed: (a) the connector's `add_reference` handler never triggered `maybe_spawn_auto_fetch` (asymmetry with the IPC `create_reference` path); (b) 15-1a's pipeline is OA discovery (Unpaywall → arXiv), not direct-URL download — working papers / repository PDFs (e.g. econstor) yield nothing. BE-7 closes both with a new `pdfUrl` field on `POST /references` + a dedicated SSRF-defensive direct-fetch path. No PDF binary in the wire — extension passes a URL hint, Milton downloads server-side.
 - Auto-detect content script (BE-3 deferred)
 - Chrome Web Store publishing (sideload-first; store after stability proven)
 - Tag color picker (memory rule: tags have NO user-supplied color)
