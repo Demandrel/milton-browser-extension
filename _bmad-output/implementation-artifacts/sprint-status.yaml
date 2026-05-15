@@ -67,4 +67,4 @@ development_status:
   # UI affordance. First BE-N to cross into milton/src-tauri/. Coordinated with
   # Epic 19 Story 19-5 (parallel session) — 19-5 defers tests on connector/payload.rs,
   # connector/handlers.rs, commands/pdf_fetch.rs until BE-7 lands.
-  BE-7-pdf-attach-on-extension-save: review
+  BE-7-pdf-attach-on-extension-save: done
