@@ -62,7 +62,7 @@ New first-party files under `src/translator-runtime/` (all carry SPDX `AGPL-3.0-
 - **`zotero-translators.ts`** — implements `Zotero.Translators`:
   - `Zotero.Translators.get(translatorID)` → translator object (metadata + parsed JS body) or `null`
   - `Zotero.Translators.getWebTranslators(url, rootUrl?)` → array of translators whose `target` regex matches the URL, ordered by `priority`
-  - Backing store: in-memory `Map<string, Translator>` populated by `translator-fetcher.ts`
+  - Backing store: in-memory `Map<string, Translator>` populated by `translator-bundle.ts` (BE-8-4 deviation per upstream guidance; was `translator-fetcher.ts`)
 - **`zotero-http.ts`** — implements `Zotero.HTTP.request(method, url, opts)`:
   - Returns a Promise resolving to `{status, responseText, responseHeaders, responseURL}` (the shape translators inspect)
   - Wraps `fetch()`; explicit error envelope on network failure (no swallowed throws)
@@ -77,10 +77,11 @@ New first-party files under `src/translator-runtime/` (all carry SPDX `AGPL-3.0-
   - Vendor a snapshot of `https://api.zotero.org/schema` as a JSON file committed at `src/translator-runtime/zotero-schema.json` (fetched once, pinned at build; document refresh procedure in dev notes)
   - Export typed helpers: `getItemTypes()`, `getFieldsForType(typeId)`, `getCreatorTypesForType(typeId)`
   - Some translators introspect schema to validate fields; without it, calls return `undefined` and items can fail to save
-- **`translator-fetcher.ts`** — fetches translator bytes from BE-8-1 CDN:
-  - `fetchById(translatorID)` → `GET https://translators.milton.so/repo/<id>` → parses the translator metadata header (first `{...}` JSON-ish block in the JS source) + retains the JS body
-  - In-memory cache: same ID asked twice = one network call
-  - Error envelope: network error / 404 / malformed metadata header → typed errors with actionable messages
+- **`translator-bundle.ts`** — **REVISED per Task 2 finding (was `translator-fetcher.ts`):** returns translators bundled at build-time:
+  - `getBundledTranslator(translatorID)` → `{metadata, body} | null` (null = not in bundle; caller decides response)
+  - Build-time registry maps `translatorID → vendored JS file path`. For BE-8-4 the registry contains 1 entry (arXiv). BE-8-5 expands to ~100 entries via the curated-bundle pipeline.
+  - Parses translator metadata header (first `{...}` JSON-ish block in the JS source) on first import; caches parsed metadata in-memory.
+  - No runtime network calls. The BE-8-1 CDN remains available for BE-8-5+ long-tail fetch (separate `translator-fetcher.ts` to be added later).
 - **`host-bridge.ts`** — postMessage protocol between sandbox iframe and popup/SW caller:
   - Request: `{type: 'translate-request', requestId, url, translatorId}`
   - Response: `{type: 'translate-response', requestId, items?, error?}`
@@ -97,20 +98,20 @@ Production-code rules (per Pre-Review Self-Check):
 - All postMessage receivers validate `event.origin` (sandbox-origin check is non-trivial in MV3 — document the chosen check pattern in dev notes).
 - Type declarations for upstream `zotero/translate` framework go in `src/translator-runtime/zotero-translate.d.ts` (Milton-side ambient typings, not in vendor/).
 
-### AC5 — Translator load from BE-8-1 CDN works for any pinned translator ID
+### AC5 — Translator bundle import works for any pinned translator file
 
-- `translator-fetcher.fetchById(translatorID)` issues `GET https://translators.milton.so/repo/<translatorID>` and:
-  - On 200: returns `{metadata: TranslatorMetadata, body: string}` where metadata includes `translatorID`, `label`, `target`, `priority`, `type`, `lastUpdated` (parsed from the JS source's leading metadata block)
-  - On 404: throws `TranslatorNotFoundError(translatorID)` (typed, actionable)
-  - On network error: throws `TranslatorFetchError(translatorID, cause)` (typed, with the underlying error preserved)
-  - On malformed metadata header (e.g., the leading JSON-ish block fails to parse): throws `TranslatorMalformedError(translatorID)`
-- Unit tests under `src/translator-runtime/translator-fetcher.test.ts`:
-  - Successful fetch → returns parsed metadata + body
-  - 404 → throws `TranslatorNotFoundError`
-  - Network error (simulated via fetch rejection) → throws `TranslatorFetchError`
-  - Malformed header → throws `TranslatorMalformedError`
-  - In-memory cache hit on second call → no second fetch (assert via mock spy)
-- Tests use Vitest mocks for `fetch`; DO NOT hit live `translators.milton.so` from CI (would couple CI green-ness to CDN availability and a moving translator-set).
+**REVISED 2026-05-16 per Task 2 finding:** Upstream `zotero/translate` README explicitly says "Please bundle translators and Zotero schema with the translation architecture. **Do not load them from a remote server.**" Charter v2 Decision 6 ("Bundled subset pinned at build") already commits BE-8-5 to bundling the curated tier. Therefore BE-8-4 uses **build-time bundling** for the spike, NOT CDN fetch. The translator-fetcher.ts implementation is **deferred to BE-8-5** where the bundling pipeline AND long-tail CDN-fetch will be designed together with full context.
+
+- Translator bundle layout: `src/translator-runtime/translators/<TranslatorName>.js` (e.g., `arXiv.org.js`). For BE-8-4 only one translator is vendored (arXiv); BE-8-5 lands the build pipeline that vendors the full curated subset.
+- A `translator-bundle.ts` module exports `getBundledTranslator(translatorID): Translator | null` which:
+  - Looks up the translator by ID in a build-time-generated registry mapping `translatorID` → vendored JS path
+  - Returns parsed `{metadata, body}` (same shape the future CDN-fetcher would have returned — preserves Zotero.Translators-facing API)
+  - Returns `null` if not bundled (calling code's responsibility to handle — for BE-8-4 spike that's a fatal error; for BE-8-5+ that triggers CDN fallback)
+- Unit tests under `src/translator-runtime/translator-bundle.test.ts`:
+  - `getBundledTranslator('<arxiv-translatorID>')` returns parsed metadata + body
+  - `getBundledTranslator('<not-bundled-id>')` returns `null`
+  - Metadata parsing handles arXiv translator's header correctly (translatorID, label="arXiv.org", target regex matches `arxiv.org`)
+- **No `fetch()` calls in the spike's translator-loading path.** Live `translators.milton.so` CDN remains UP from BE-8-1 — still used by upstream tooling and reserved for BE-8-5+ long-tail — but BE-8-4 doesn't touch it at runtime.
 
 ### AC6 — arXiv integration spike: end-to-end via the new runtime (the load-bearing AC)
 
@@ -118,8 +119,8 @@ This AC is what proves the lift works. Given an arXiv abs page URL and the arXiv
 
 1. Caller (devtools console / hidden trigger / test page — see "Spike trigger surface" below) issues a `translate-request` to the sandbox via postMessage.
 2. Sandbox's `host-bridge` receives the request.
-3. `translator-fetcher.fetchById(arxivTranslatorId)` fetches the arXiv translator from the BE-8-1 CDN (`GET https://translators.milton.so/repo/<id>`).
-4. `Zotero.Translators` registers the fetched translator.
+3. `translator-bundle.getBundledTranslator(arxivTranslatorId)` returns the vendored arXiv translator (NO network call; per AC5 revision, BE-8-4 uses build-time bundling).
+4. `Zotero.Translators` registers the bundled translator.
 5. `Zotero.Translate.Web` is constructed; `setTranslator(arxivTranslator)`; `setString(<arxiv-page-html>)` (or `setDocument()` after `Zotero.HTTP.request(url)` fetches the page).
 6. Translator's `detectWeb(doc, url)` returns a Zotero item type (expected: `'journalArticle'` or `'preprint'`).
 7. Translator's `doWeb(doc, url)` runs; produces 1+ Zotero items containing `{itemType, title, creators, date, DOI?, arXivID?, abstractNote, ...}`.
@@ -145,7 +146,7 @@ This AC is what proves the lift works. Given an arXiv abs page URL and the arXiv
   - `zotero-http.test.ts` — request success, 404, network error, headers normalization, `responseType: 'document'` parsing, `responseType: 'json'` parsing, unsupported responseType throws
   - `zotero-translators.test.ts` — `get(id)` hit, `get(id)` miss returns null, `getWebTranslators(url)` matches single translator by `target` regex, matches multiple translators ordered by priority, returns empty array on no match
   - `zotero-translate.test.ts` — ItemSaver single-item path, multi-item path, empty path, Translation lifecycle wiring (mocked translator)
-  - `translator-fetcher.test.ts` — per AC5
+  - `translator-bundle.test.ts` — per revised AC5 (bundled hit, not-bundled miss returns null, arXiv metadata parsing)
   - `host-bridge.test.ts` — request/response round-trip via mocked postMessage, origin validation rejects unknown senders, malformed request returns error response
   - `schema.test.ts` — `getItemTypes()` returns known types, `getFieldsForType('journalArticle')` returns expected fields
 - All tests pass `pnpm test`. Test environment: current `vitest.config.ts` uses `environment: 'node'`; some sandbox-adjacent tests may need `environment: 'jsdom'` (per-file override via `// @vitest-environment jsdom` directive — DO NOT switch the whole repo to jsdom).
@@ -217,15 +218,15 @@ Convention: `[D]` = dev-agent owned (code / git / pnpm). `[P]` = Pierre-owned (s
 - [ ] **Task 2 — Land the submodule** (AC: #1, #2)
   - [ ] 2.1 [D] `git submodule add https://github.com/zotero/translate.git vendor/zotero-translate`
   - [ ] 2.2 [D] `cd vendor/zotero-translate && git checkout <SHA from Task 1.1> && cd ../..`
-  - [ ] 2.3 [D] `git add .gitmodules vendor/zotero-translate` (the latter records the SHA as the submodule pointer)
-  - [ ] 2.4 [D] `git submodule status` — verify single line showing `<SHA> vendor/zotero-translate (heads/master @ <SHA short>)` or similar
-  - [ ] 2.5 [D] Verify `scripts/add-spdx-headers.sh` skips `vendor/**`. Run the script; verify zero files modified under `vendor/`. If it tries to header vendor files, add explicit `--exclude vendor/` (or equivalent for the script's invocation) in this commit.
-  - [ ] 2.6 [D] Commit: `feat(BE-8-4): add zotero/translate AGPL submodule pinned at <SHA>`
+  - [x] 2.3 [D] `git add .gitmodules vendor/zotero-translate` → staged correctly
+  - [x] 2.4 [D] `git submodule status --recursive`: pin SHA verified `d08300c2 vendor/zotero-translate (heads/master)`. **Atypical finding:** upstream brings 2 nested submodules — `modules/utilities @ cccf1235` (zotero/utilities) + `modules/utilities/resource/schema/global @ 1b12272d` (zotero/zotero-schema). All auto-resolved by `git submodule update --init --recursive`. Schema vendoring (was Task 5.4 plan) now redundant — schema is at `vendor/zotero-translate/modules/utilities/resource/schema/global/schema.json`.
+  - [x] 2.5 [D] `scripts/add-spdx-headers.sh` default target = `src/`; vendor implicitly excluded by traversal scope. Verified: 0 files added, 17 skipped (all existing src files already headed). `vendor/` untouched.
+  - [x] 2.6 [D] Committed as `11054d3 feat(BE-8-4): add zotero/translate AGPL submodule pinned at d08300c2`
 
-- [ ] **Task 3 — CI: submodule-aware checkout** (AC: #2)
-  - [ ] 3.1 [D] Edit `.github/workflows/ci.yml`: change `actions/checkout@v4` to use `with: { submodules: recursive, fetch-depth: 1 }`. Existing `paths-ignore` block UNCHANGED.
-  - [ ] 3.2 [D] Commit: `ci(BE-8-4): checkout submodules recursively for zotero/translate`
-  - [ ] 3.3 [D] DO NOT push yet — per CLAUDE.md Rule 1, accumulate commits locally until story is done
+- [x] **Task 3 — CI: submodule-aware checkout** (AC: #2) — completed 2026-05-16
+  - [x] 3.1 [D] Edited `.github/workflows/ci.yml`: added `with: { submodules: recursive, fetch-depth: 1 }` to `actions/checkout@v4` step. `paths-ignore` block + all other steps UNCHANGED. The `submodules: recursive` flag also handles upstream's 2 nested submodules automatically.
+  - [x] 3.2 [D] Will commit in batched CI + story-deviation commit (this turn)
+  - [x] 3.3 [D] No push yet — CLAUDE.md Rule 1 honored
 
 - [ ] **Task 4 — Sandbox page scaffolding + manifest wiring** (AC: #3, #8)
   - [ ] 4.1 [D] Create `src/translator-runtime/sandbox.html` — minimal HTML: `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body><script type="module" src="./sandbox.ts"></script></body></html>` (SPDX header in HTML comment form)
@@ -240,26 +241,26 @@ Convention: `[D]` = dev-agent owned (code / git / pnpm). `[P]` = Pierre-owned (s
   - [ ] 5.1 [D] **`zotero-http.ts` + tests** — implement `Zotero.HTTP.request()` per AC4 surface; cover success / 404 / network error / responseType variants in tests; align return shape with what translators expect (cross-check against any `Zotero.HTTP.request` callsites in `vendor/zotero-translate/` AND in upstream `zotero/zotero-connectors` for reference).
   - [ ] 5.2 [D] **`zotero-translators.ts` + tests** — implement registry per AC4; in-memory `Map` backing store; URL matching via `target` regex with `priority` ordering for `getWebTranslators()`.
   - [ ] 5.3 [D] **`zotero-translate.ts` + tests** — implement Translation lifecycle wrapper + ItemSaver per AC4. This wires upstream's `Translation` class (from `vendor/zotero-translate/`) into our host hooks (HTTP, ItemSaver, debug).
-  - [ ] 5.4 [D] **`schema.ts` + `zotero-schema.json` + tests** — fetch ONCE during dev-story execution: `curl https://api.zotero.org/schema -o src/translator-runtime/zotero-schema.json` (run from repo root). Commit the JSON file as part of this story. Helpers `getItemTypes()`, `getFieldsForType(typeId)`, `getCreatorTypesForType(typeId)` read from the bundled JSON. **Refresh procedure** (documented in dev notes for future stories): re-run the same `curl` one-liner; commit the diff. NO build-time fetch automation in BE-8-4 — keep it explicit + manual to avoid surprise schema drift between CI runs.
-  - [ ] 5.5 [D] **`translator-fetcher.ts` + tests** — per AC5; use Vitest mocks for fetch in tests (DO NOT hit live CDN).
+  - [ ] 5.4 [D] **`schema.ts` + tests** — **REVISED per Task 2 finding:** the Zotero schema is ALREADY vendored as a nested submodule at `vendor/zotero-translate/modules/utilities/resource/schema/global/schema.json` (via the chain `zotero/translate → zotero/utilities → zotero/zotero-schema`). DO NOT curl `api.zotero.org/schema` — schema.ts imports from the nested-submodule path instead. Refresh procedure: bump the nested submodule pin (which bumps `zotero/zotero-schema` automatically since it lives under utilities). Tests verify `getItemTypes()` returns known types, `getFieldsForType('journalArticle')` returns expected fields.
+  - [ ] 5.5 [D] **`translator-bundle.ts` + tests** — **REVISED per Task 2 finding (replaces `translator-fetcher.ts`):** the bundle module exports `getBundledTranslator(translatorID)` returning `{metadata, body} | null`. Build-time registry maps `translatorID → vendored JS path` (for BE-8-4: just arXiv via `src/translator-runtime/translators/arXiv.org.js`). Parses translator metadata header from the JS source. Translator-fetcher (CDN long-tail) **DEFERRED to BE-8-5**. Unit tests: bundled hit, not-bundled miss returns null, metadata parsing for arXiv translator.
   - [ ] 5.6 [D] **`host-bridge.ts` + tests** — postMessage protocol per AC4; versioned `protocolVersion: 1`; origin validation.
   - [ ] 5.7 [D] **`sandbox.ts` (real implementation)** — imports adapters; constructs `Zotero` global; loads upstream framework from `vendor/zotero-translate/`; listens for `translate-request`; routes to translation.
   - [ ] 5.8 [D] **Type declaration shim** — `src/translator-runtime/zotero-translate.d.ts` declares the ambient types for upstream's framework (Translation class, Translator object shape, Item shape). This is Milton-side; upstream's framework ships no TypeScript types of its own.
   - [ ] 5.9 [D] Run `scripts/add-spdx-headers.sh` — verify all new files get headers + verify `vendor/` is skipped.
   - [ ] 5.10 [D] `pnpm typecheck` clean; `pnpm test` green (target ≥ 130 tests). Commit per-module if PRs would be too large for review; otherwise one big commit `feat(BE-8-4): implement Zotero host adapters (Translators, HTTP, Translate, Schema, fetcher, bridge)` is acceptable.
 
-- [ ] **Task 6 — Pin arXiv translator + spike fetch** (AC: #5, #6)
-  - [ ] 6.1 [D] Discover arXiv translator ID: browse `https://github.com/zotero/translators` for `arXiv.org.js`; the file's first line contains the metadata header including `"translatorID": "<UUID>"`. Record the ID.
-  - [ ] 6.2 [D] Verify the translator is mirrored on BE-8-1 CDN: `curl -I https://translators.milton.so/repo/<arxiv-translator-id>` → 200. If 404, BE-8-1's mirror didn't pull this translator — fix in a parallel BE-8-1 follow-up (out of BE-8-4 scope; surface to Pierre).
-  - [ ] 6.3 [D] Record arXiv translator ID + its `lastUpdated` field in dev notes (so BE-8-5 + BE-8-6 reference the same translator version).
+- [ ] **Task 6 — Vendor arXiv translator at pinned SHA** (AC: #5, #6) — REVISED per Task 2 finding (was: pin + CDN fetch verify)
+  - [ ] 6.1 [D] Pin upstream `zotero/translators` HEAD SHA via `git ls-remote https://github.com/zotero/translators.git HEAD` for reference (record in dev notes); do NOT add as a submodule (would pull 600+ translators we don't need).
+  - [ ] 6.2 [D] Vendor arXiv translator: `curl https://raw.githubusercontent.com/zotero/translators/<SHA>/arXiv.org.js -o src/translator-runtime/translators/arXiv.org.js`. Add SPDX-style header comment above the upstream metadata block: `// Vendored from zotero/translators @ <SHA> on 2026-05-16. License: Upstream's (see metadata block below).` — do NOT add Milton's AGPL header (would overwrite upstream's license).
+  - [ ] 6.3 [D] Record arXiv translator ID (`translatorID` field from the file's metadata header) + upstream pin SHA in dev notes. BE-8-5 will use the same SHA-pinning pattern to bundle the curated subset.
 
-- [ ] **Task 7 — arXiv integration spike end-to-end** (AC: #6, #10 scenarios 3-5)
-  - [ ] 7.1 [D] Decide spike trigger surface (per AC6 table). DEFAULT to (a) `window.miltonRuntimeSpike(url)` console command. Surface decision to Pierre before committing the implementation.
-  - [ ] 7.2 [D] Implement the trigger: caller → sandbox via postMessage → runtime → returns items.
+- [ ] **Task 7 — arXiv integration spike end-to-end** (AC: #6, #10 scenarios 3-5) — REVISED per Task 2 finding (no CDN fetch)
+  - [ ] 7.1 [D] Spike trigger surface = `window.miltonRuntimeSpike(url)` console command (hard-defaulted per blue-team edit). Implement in sandbox.ts: exposes the function on sandbox `window`; sandbox communicates back to popup/SW via postMessage when triggered.
+  - [ ] 7.2 [D] Implement the trigger: console caller → sandbox window function → bundled translator lookup (`translator-bundle.getBundledTranslator(arxivID)`) → `Zotero.Translate.Web` instantiation → translator execution → ItemSaver collection → returns items via postMessage to caller.
   - [ ] 7.3 [D] Convert returned Zotero items → connector payload shape. Inspect `metadata-to-payload.ts`: it currently converts from `translate.milton.so/web`'s CSL-JSON output, which may differ from Zotero items (Zotero uses its own item-type/field naming; CSL-JSON is a translation OF Zotero items). Decide: extend `metadata-to-payload.ts` to also handle Zotero items, OR write `zotero-item-to-payload.ts` alongside. Pick based on diff size; both are acceptable.
   - [ ] 7.4 [D] POST to `127.0.0.1:7521/references` via existing `connector-client.ts` (no new client code).
   - [ ] 7.5 [D] Local manual smoke on `https://arxiv.org/abs/2303.08774`. Iterate until success. Capture devtools console output for the Debug Log References section.
-  - [ ] 7.6 [D] Commit: `feat(BE-8-4): arXiv integration spike via new translator runtime`
+  - [ ] 7.6 [D] Commit: `feat(BE-8-4): arXiv integration spike via bundled translator runtime`
   - [ ] 7.7 [D] **Story-level timebox** (charter v2 Risks-table fallback path): if Task 7.5 manual smoke fails for >2 hours of debugging (cumulative across attempts), HALT and surface to Pierre with: (a) failing step in the 1-12 pipeline from AC6, (b) devtools log + error message, (c) suspected root cause, (d) one-paragraph recommendation: "retry with patched runtime / switch to upstream `zotero/zotero-connectors` fallback / escalate to custom-scrapers-per-publisher path (charter v2 risk fallback)". DO NOT silently grind past the 2-hour mark — escalation is cheap, sunk-cost is expensive.
 
 - [ ] **Task 8 — Push branch + CI green + Pierre G17-1 smoke** (AC: #10, CLAUDE.md Rule 1)
@@ -305,7 +306,8 @@ North-star alignment: this story doesn't directly move the "Pierre uninstalls Zo
 - `src/translator-runtime/zotero-http.ts` — `Zotero.HTTP` adapter
 - `src/translator-runtime/zotero-translate.ts` — `Zotero.Translate.*` adapter
 - `src/translator-runtime/schema.ts` + `src/translator-runtime/zotero-schema.json` — schema bundle + helpers
-- `src/translator-runtime/translator-fetcher.ts` — CDN fetcher
+- `src/translator-runtime/translator-bundle.ts` — bundled-translator lookup (was `translator-fetcher.ts` in original plan; CDN fetcher deferred to BE-8-5)
+- `src/translator-runtime/translators/arXiv.org.js` — vendored arXiv translator from `zotero/translators` (BE-8-4 only; BE-8-5 expands the bundle)
 - `src/translator-runtime/host-bridge.ts` — postMessage protocol
 - `src/translator-runtime/zotero-translate.d.ts` — ambient typings for upstream framework
 - `src/translator-runtime/*.test.ts` — Vitest tests for each adapter (~6 test files)
@@ -556,4 +558,5 @@ Story-specific subsection (BE-8-4 runtime-lift gates):
 |---|---|---|
 | 2026-05-16 | Pierre + Claude (Opus 4.7 1M, BMad SM workflow) | Story drafted via `/bmad_bmm_create-story`. Charter v2 BE-8-4 scope applied; 11 ACs + 10 tasks (~45 subtasks). Pre-draft gating: Pierre confirmed BE-3 stays deferred + that creating BE-4 was a typo for BE-8-4 (BE-4 already done; story file exists). Spike trigger surface left as a Task 7.1 decision (default (a) console command — surface to Pierre before commit). Submodule upstream source defaults to `github.com/zotero/translate` with fallback to `zotero/zotero-connectors/src/zotero/` per AC1 atypical. Status: `ready-for-dev`. Sprint-status flipped `backlog → ready-for-dev`. |
 | 2026-05-16 | Pierre + Claude (Opus 4.7 1M, BMad Dev workflow) | **Dev-story started.** Branch `feat/BE-8-4-translator-runtime-lift` cut from `main@ab63a3c` per CLAUDE.md Rule 0 (planning artifacts committed to main first: `cd971f1` workflow customization + `ab63a3c` story drafted). Pacing: Pierre confirmed Tasks 0-9 in one session; Task 8 G17-1 smoke is the natural Pierre-handoff. Status flipped `ready-for-dev → in-progress`. **Task 1 pre-flight pin SHA:** `git ls-remote https://github.com/zotero/translate.git HEAD` → `d08300c2c01a4d6ef325f05cbefc6c138a99f811` on `refs/heads/master` (NOT `main`; upstream uses `master`). Commit health verified via GitHub API: author Abe Jellinek (active Zotero maintainer), date 2026-04-23 (~3 weeks ago — not stale, not WIP), message "Add support for clearing challenge in browser (#45)" — real feature work. PIN APPROVED. |
+| 2026-05-16 | Pierre + Claude (Opus 4.7 1M, BMad Dev workflow) | **Tasks 2 + 3 complete — submodule landed + CI updated. STORY-SPEC DEVIATION FILED.** Submodule `vendor/zotero-translate` pinned at `d08300c2`. Nested submodules auto-resolved: `modules/utilities @ cccf1235` (zotero/utilities) + `modules/utilities/resource/schema/global @ 1b12272d` (zotero/zotero-schema). Commit `11054d3`. CI `actions/checkout@v4` extended with `submodules: recursive, fetch-depth: 1` — handles upstream's nested submodules transparently. **Story-spec deviation (Pierre approved 2026-05-16):** Upstream `zotero/translate` README explicitly states "Please bundle translators and Zotero schema with the translation architecture. **Do not load them from a remote server.**" Original story AC5 + AC6 + Task 5.4 + 5.5 + 6 + 7 planned CDN-fetch of translators via BE-8-1's `translators.milton.so/repo/` at runtime — contradicts upstream guidance. Pierre delegated decision; Claude analyzed (upstream's 15+ years of production experience + MV3 CSP best practices + charter v2 Decision 6 already commits BE-8-5 to bundling = right path is bundle now). REVISED PLAN: BE-8-4 bundles arXiv translator at build-time as a vendored static asset (`src/translator-runtime/translators/arXiv.org.js`); `translator-bundle.ts` (replaces `translator-fetcher.ts`) provides `getBundledTranslator(id)` API. Translator-fetcher implementation DEFERRED to BE-8-5 where curated-bundle pipeline lands together with long-tail CDN-fetch strategy. Story file AC5, AC6 (spike pipeline), Task 5.4 (schema = use nested submodule, not curl), Task 5.5 (translator-bundle, not -fetcher), Task 6 (vendor arXiv from zotero/translators at pinned SHA, not CDN verify), Task 7 (spike uses bundled translator) all updated. Will commit story deviation + CI update + Task 2/3 mark-done together. |
 | 2026-05-16 | Claude (Opus 4.7 1M, BMad SM workflow — auto-method-17) | **Red Team vs Blue Team elicitation applied automatically** per Pierre-customized default flow (codified in same session — see memory `[[feedback-create-story-default-flow]]`). 11 red-team attacks → 11 hardening edits auto-applied across AC/Task/Dev-Notes sections. Red-team attack summary: (1) AC1 fallback to zotero-connectors was hand-wavy — now HALT-and-surface instead of silent swap; (2) AC6 spike trigger surface was a dev decision — now hard-defaulted to console command per `[[feedback-capture-correctness-over-ui-polish]]`; (3) AC8 CSP testability silent — added transitive-validation note tied to AC10 scenarios 3-5; (4) AC7 test-count target `≥130` arbitrary — replaced with per-module floor (success + error + edge); (5) Submodule pin SHA could move between Task 1.1 and Task 2 — added Task 1.4 pin-stability `git ls-remote` check; (6) Translator execution had no timeout — added `timeoutMs` (default 10s) + `TranslatorTimeoutError`; (7) Task 5.4 schema vendoring "at build time" ambiguous — tightened to explicit `curl` one-liner with documented refresh procedure; (8) Task 7 spike could grind for days without escalation — added Task 7.7 2-hour timebox with surface-to-Pierre escalation; (9) AC10 missing baseline — added scenario 0 BE-7 pre-merge baseline to prevent misattribution; (10) Submodule runtime deps could surprise dev mid-Task-5 — added Task 5.0 dependency-audit step BEFORE adapter coding; (11) AC10 fresh-clone smoke owner was ambiguous — now `[D] then [P]` (dev pre-push + Pierre sideload). 8 Pre-Review Self-Check items added covering the new hardening. Story still ready-for-dev pending Pierre's final validation. |
