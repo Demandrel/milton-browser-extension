@@ -1,6 +1,9 @@
 # Milton Browser Extension
 
-**Status:** BE-1 scaffold + BE-4 auth migration + BE-2 rich popup UX (incl. Figma redesign pass) + BE-7 auto-attach PDF on PDF pages shipped. Functional end-to-end against current prod. BE-3 backlog.
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+[![CI](https://github.com/Demandrel/milton-browser-extension/actions/workflows/ci.yml/badge.svg)](https://github.com/Demandrel/milton-browser-extension/actions/workflows/ci.yml)
+
+**Status:** Sprint 1 (MV1) shipped — BE-1 scaffold + BE-4 per-user JWT auth + BE-2 rich popup UX + BE-7 PDF auto-attach. Functional end-to-end against current prod. Sprint 2 (BE-8 — Zotero-Connector pivot for Class 2/3 capture parity) in progress; see [charter v2](_bmad-output/planning-artifacts/charter-v2.md). Extracted from `tools/browser-extension/` in [Milton-saas](https://github.com/Demandrel/Milton-saas) (private) via BE-8-3 on 2026-05-16, history preserved via `git filter-repo`.
 
 ## What this does
 
@@ -127,17 +130,28 @@ Step-by-step to install the extension in Chrome / Edge / Brave:
 | **BE-7** `https://arxiv.org/abs/2303.08774` (arXiv abs page — HTML) | Reference created; PDF attached via the EXISTING OA-discovery path (`source: arxiv`) — confirms `maybe_spawn_auto_fetch` now fires from the connector. |
 | **BE-7** Page with `.pdf.html` filename | Reference created; no direct-fetch attempted (mimeType `text/html` correctly rejected). |
 
+## License
+
+This extension is licensed under **GNU Affero General Public License v3.0 or later** (AGPL-3.0-or-later). See [`COPYING`](COPYING) for the full license text. First-party source files under `src/**` carry SPDX short-form headers.
+
+AGPL was chosen so the extension can import the `zotero/translate` runtime (AGPLv3) as a submodule (planned in BE-8-4) without ambiguity. The IPC boundary with Milton-desktop (HTTP-only via `127.0.0.1:7521` and `translate.milton.so`) keeps Milton-desktop outside the AGPL boundary.
+
 ## Charter + sprint
 
-- Charter: [`_bmad-output/planning-artifacts/charter.md`](_bmad-output/planning-artifacts/charter.md)
+- Sprint 2 charter (current): [`_bmad-output/planning-artifacts/charter-v2.md`](_bmad-output/planning-artifacts/charter-v2.md)
+- Sprint 1 charter (SUPERSEDED): [`_bmad-output/planning-artifacts/charter.md`](_bmad-output/planning-artifacts/charter.md)
 - Sprint status: [`_bmad-output/implementation-artifacts/sprint-status.yaml`](_bmad-output/implementation-artifacts/sprint-status.yaml)
 - BE-1 story: [`_bmad-output/implementation-artifacts/BE-1-scaffold-connector-client-sideload.md`](_bmad-output/implementation-artifacts/BE-1-scaffold-connector-client-sideload.md)
-- BE-4 story: [`_bmad-output/implementation-artifacts/BE-4-auth-migration-connector-token.md`](_bmad-output/implementation-artifacts/BE-4-auth-migration-connector-token.md)
 - BE-2 story: [`_bmad-output/implementation-artifacts/BE-2-rich-popup-selectors.md`](_bmad-output/implementation-artifacts/BE-2-rich-popup-selectors.md)
+- BE-4 story: [`_bmad-output/implementation-artifacts/BE-4-auth-migration-connector-token.md`](_bmad-output/implementation-artifacts/BE-4-auth-migration-connector-token.md)
+- BE-7 story: [`_bmad-output/implementation-artifacts/BE-7-pdf-attach-on-extension-save.md`](_bmad-output/implementation-artifacts/BE-7-pdf-attach-on-extension-save.md)
+- BE-8-1 story: [`_bmad-output/implementation-artifacts/BE-8-1-translator-mirror-cdn-setup.md`](_bmad-output/implementation-artifacts/BE-8-1-translator-mirror-cdn-setup.md)
+- BE-8-2 story: [`_bmad-output/implementation-artifacts/BE-8-2-connector-bytes-endpoint.md`](_bmad-output/implementation-artifacts/BE-8-2-connector-bytes-endpoint.md)
+- BE-8-3 story: [`_bmad-output/implementation-artifacts/BE-8-3-extension-extracted-to-public-agpl-repo.md`](_bmad-output/implementation-artifacts/BE-8-3-extension-extracted-to-public-agpl-repo.md)
 
 ## Companion infrastructure
 
-- **Translator-mirror CDN** (BE-8-1, sprint 2) — Milton-hosted mirror of `zotero/translators` (served at `https://translators.milton.so/repo/`) consumed by the BE-8-5 curated-bundle build pipeline and the runtime long-tail lazy-fetch path. Runbook: [`../translator-mirror/README.md`](../translator-mirror/README.md).
+- **Translator-mirror CDN** (BE-8-1, sprint 2) — Milton-hosted mirror of `zotero/translators` (served at `https://translators.milton.so/repo/`) consumed by the BE-8-5 curated-bundle build pipeline and the runtime long-tail lazy-fetch path. Runbook lives in [Milton-saas](https://github.com/Demandrel/Milton-saas) (private) at `tools/translator-mirror/README.md` — visible to Demandrel members at https://github.com/Demandrel/Milton-saas/tree/main/tools/translator-mirror.
 
 ## Tech stack
 
@@ -168,6 +182,8 @@ pnpm test                         # vitest run
 
 ## Story map
 
+### Sprint 1 (MV1 — shipped)
+
 | ID | Title | Status |
 |---|---|---|
 | BE-1 | Scaffold + connector client + signed-out detection + sideload package | shipped |
@@ -175,3 +191,17 @@ pnpm test                         # vitest run
 | BE-2 | Rich popup UX (metadata preview + tag / project / collection selectors) | shipped |
 | BE-3 | Page-detection content script | backlog (deferred) |
 | BE-7 | Auto-attach PDF when saving from a PDF page (silent best-effort via new connector `pdfUrl` field + SSRF-defensive direct fetch) | shipped |
+
+### Sprint 2 (BE-8 — Zotero-Connector pivot, in progress)
+
+| ID | Title | Status |
+|---|---|---|
+| BE-8-1 | Translator-mirror CDN setup (Coolify + Traefik + manifest signing) | shipped |
+| BE-8-2 | Connector bytes endpoint (`POST /references/{id}/pdf-bytes`) | shipped (Milton-saas-side) |
+| BE-8-3 | Extension extracted to public AGPL repo (this repo) | in progress |
+| BE-8-4 | Translator runtime lift (`zotero/translate` as submodule) | backlog |
+| BE-8-5 | Curated translator bundle + lazy CDN-fetch | backlog |
+| BE-8-6 | Class 3 capture flow (translator in page context) | backlog |
+| BE-8-7 | Class 2 capture (client-side PDF fetch with session) + paste-failure UX | backlog |
+| BE-8-8 | LLM-fallback in Milton-desktop | backlog |
+| BE-8-9 | Server downscale + GROBID retire | backlog |

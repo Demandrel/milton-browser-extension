@@ -1,3 +1,9 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026  Pierre Jacquel
+//
+// This file is part of milton-browser-extension.
+// See COPYING for license terms.
+
 // Pure helpers extracted from popup.ts for unit testing.
 // Anything DOM-touching stays in popup.ts; this file is all data/logic.
 

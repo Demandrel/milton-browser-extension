@@ -1,3 +1,9 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026  Pierre Jacquel
+//
+// This file is part of milton-browser-extension.
+// See COPYING for license terms.
+
 import { describe, expect, it } from 'vitest'
 import { mapMetadataToPayload } from '../lib/metadata-to-payload'
 import type { EditableMetadata, MetadataAuthor, MetadataPrimary, TagSummary } from '../lib/types'
