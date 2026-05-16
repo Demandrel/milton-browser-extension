@@ -139,7 +139,7 @@ development_status:
   # in Milton-saas becomes deprecated stub pointing to new repo.
   # Low-medium risk. No deps. Parallelizable with BE-8-1, BE-8-2.
   # Theme: License execution.
-  BE-8-3-extension-extracted-to-public-agpl-repo: in-progress
+  BE-8-3-extension-extracted-to-public-agpl-repo: done
 
   # BE-8-4: Translator runtime lift. Import zotero/translate as AGPL submodule
   # into extracted repo; implement required Zotero.Translators / Zotero.HTTP /

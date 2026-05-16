@@ -1,6 +1,6 @@
 # Story BE-8.3: Extension Extracted to Public AGPL Repo
 
-Status: in-progress
+Status: done
 Origin: Charter v2 Decision A1 (`tools/browser-extension/_bmad-output/planning-artifacts/charter-v2.md` line 54; commit `e5600694` / PR #33, merged 2026-05-15). Unambiguous AGPL boundary for the translator runtime that BE-8-4 imports as a submodule. Parallelizable greenfield extraction — no runtime code change, no Milton-desktop change.
 Depends on: — (parallelizable with BE-8-1 done, BE-8-2 done)
 Unblocks: BE-8-4 (translator runtime lift requires the extracted repo as its AGPL host), BE-8-5 (curated translator bundle build pipeline targets the new repo), BE-8-6 (Class 3 capture lives in the new repo), BE-8-7 (Class 2 capture lives in the new repo)
@@ -211,30 +211,30 @@ Convention from BE-8-1: `[D]` = dev-agent owned (code / git / gh CLI), `[P]` = P
   - [ ] 7.5 [D] Open PR with title `chore(bmad): post-extraction _bmad-output sweep` and body including the IPC-boundary self-check verbatim per AC9.
   - [ ] 7.6 [D] `grep -rE "(milton/src-tauri|@milton-saas|src-tauri/)" src` MUST return zero hits — paste the empty-grep evidence into the PR body.
 
-- [ ] **Task 8 — Pierre's smoke (G17-1 HARD gate)** (AC: #6, #10)
-  - [ ] 8.1 [D] Provide Pierre the CI artifact URL from Task 5.3 (`milton-browser-extension-<sha>.zip`).
-  - [ ] 8.2 [P] Pierre downloads, unzips, sideloads into Chrome via Load unpacked.
-  - [ ] 8.3 [P] Pierre runs all 7 smoke scenarios from AC10 and reports pass/fail.
-  - [ ] 8.4 [D] Any red → fix in the new repo + re-package + re-smoke. Loop until all 7 green.
-  - [ ] 8.5 [D] On all-green, record smoke result in the Change Log with date + scenarios passed.
+- [x] **Task 8 — Pierre's smoke (G17-1 HARD gate)** (AC: #6, #10) — completed 2026-05-16
+  - [x] 8.1 [D] Bootstrap PR #1 CI green (21s); artifact `milton-browser-extension-3c25ca33...` (30,959 bytes) pre-downloaded + unzipped to `~/Downloads/be-8-3-smoke/`.
+  - [x] 8.2 [P] Pierre sideloaded the unzipped dist/ into Chrome via Load unpacked. Toolbar icon appeared.
+  - [x] 8.3 [P] Pierre ran all 7 scenarios from AC10. Result: **7/7 green** ("done all 7, all green" — 2026-05-16).
+  - [x] 8.4 [D] No reds; loop exit not needed.
+  - [x] 8.5 [D] Smoke result recorded in Change Log.
 
-- [ ] **Task 9 — Land the deprecated stub PR in Milton-saas** (AC: #5, #7, #11)
-  - [ ] 9.1 [D] Branch off Milton-saas `main`: `git checkout -b chore/be-8-3-deprecate-extension-subtree`.
-  - [ ] 9.2 [D] `git rm -r tools/browser-extension/` (everything).
-  - [ ] 9.3 [D] Re-create `tools/browser-extension/README.md` as the ≤30-line deprecated stub per AC7. Include: link to new repo, AGPL license note, cutover SHA placeholder (filled after Task 3.5 + this PR's merge SHA known), charter v2 link.
-  - [ ] 9.4 [D] Update Milton-saas root `README.md`: add `## Companion Repositories` section per AC11 (or extend an existing one).
-  - [ ] 9.5 [D] If a `docs/developer-guide/sub-projects.mdx` (or equivalent) exists: add the same pointer. Otherwise: no-op, document in Change Log.
-  - [ ] 9.6 [D] Pre-push hook MUST run. If hook hasn't been re-installed in this worktree, run `pnpm format:check && pnpm check` first — per [[feedback-format-check-before-push-from-new-worktree]] (PR #38 cost a CI cycle to a hook miss). This PR has zero Rust changes but touches MD files (paths-ignore'd) AND the root README (NOT paths-ignored on its own; but README touches don't fail format).
-  - [ ] 9.7 [D] `gh pr create --base main --head chore/be-8-3-deprecate-extension-subtree --title "chore(BE-8-3): deprecate tools/browser-extension, extracted to Demandrel/milton-browser-extension" --body "<...>"`. Body MUST include the IPC-boundary self-check per AC9.
-  - [ ] 9.8 [D] Launch `gh pr checks <PR#> --watch` in background; capture URL for Pierre per [[feedback-always-give-ci-url-when-waiting]].
-  - [ ] 9.9 [D] On green + Pierre's smoke confirmation from Task 8.5: surface merge call per [[feedback-claude-owns-merge-call-at-story-close]] — `"BE-8-3 PR #N green · smoke 7/7 green · recommend merge."`
-  - [ ] 9.10 [D] Pierre says "go" → `gh pr merge <PR#> --squash --delete-branch`. Per [[feedback-monitor-post-merge-ci-on-main]]: immediately `gh run list --branch main --limit 1` → `gh run watch <id>` in background → capture URL → wait for green.
+- [x] **Task 9 — Land the deprecated stub PR in Milton-saas** (AC: #5, #7, #11) — completed 2026-05-16
+  - [x] 9.1 [D] Branch `chore/be-8-3-deprecate-extension-subtree` was already cut at Task 0 setup (off `main@19cff63f`).
+  - [x] 9.2 [D] `git rm -rf tools/browser-extension/` — 40 files deleted (`-f` required because BE-8-3 story file had uncommitted edits; safe because those edits were already mirrored to new repo as commit `3c4789e`).
+  - [x] 9.3 [D] New `tools/browser-extension/README.md` written: 22 lines, deprecation stub pointing at new repo + cutover SHAs (`ad60d7e` filter-repo HEAD + `eb2daf2b` bootstrap PR squash-merge) + charter v2 link.
+  - [x] 9.4 [D] Milton-saas root `README.md` updated: added `## Companion Repositories` section after `## Project Structure`; `tools/` line added to Project Structure code block (was missing entirely).
+  - [x] 9.5 [D] No `docs/developer-guide/sub-projects.mdx` exists in Milton-saas; no-op (documented).
+  - [x] 9.6 [D] Pre-push hook fired all 4 gates: format:check ✅ / lint:reactive ✅ / check ✅ / test 2799/2799 in 80.56s ✅.
+  - [x] 9.7 [D] `gh pr create` opened https://github.com/Demandrel/Milton-saas/pull/42 with IPC-boundary self-check verbatim in body.
+  - [x] 9.8 [D] `gh run watch 25970858399` background-watched per [[feedback-monitor-ci-in-background]]. Conclusion: `success` after 13m12s.
+  - [x] 9.9 [D] Merge call surfaced per [[feedback-claude-owns-merge-call-at-story-close]]: "BE-8-3 stub PR #42 — gates green · recommend merge."
+  - [x] 9.10 [D] Pierre "go" → `gh pr merge 42 --squash --delete-branch`. Squash commit `7ddcf647` on Milton-saas main. Post-merge main CI watch run `25971158252`: `success` after 13m35s.
 
-- [ ] **Task 10 — Story closeout** (AC: #8)
-  - [ ] 10.1 [D] In the new repo: update `_bmad-output/implementation-artifacts/sprint-status.yaml`: `BE-8-3-extension-extracted-to-public-agpl-repo: backlog → done`. Commit + push to `main` (no PR needed — sprint-status updates land directly on main for the extension repo, mirroring Milton-saas convention).
-  - [ ] 10.2 [D] Confirm post-merge main CI in Milton-saas is green (Task 9.10 watch) AND post-push CI on new repo `main` is green (Task 10.1 push) BEFORE declaring story done. Per [[feedback-never-mark-done-before-everything-green]] — no exceptions, no "looks fine, moving on".
-  - [ ] 10.3 [D] Record Change Log entries for the entire flow (extraction commit SHA in new repo, Milton-saas stub merge SHA, post-merge CI run IDs both sides, Pierre smoke date).
-  - [ ] 10.4 [D] Surface to Pierre: BE-8-3 done + which BE-8 stories are unblocked (BE-8-4 is the natural next: translator runtime lift). Pierre owns the next-story call per [[feedback-pierre-owns-epic-scope]].
+- [x] **Task 10 — Story closeout** (AC: #8) — completed 2026-05-16
+  - [x] 10.1 [D] New repo `_bmad-output/implementation-artifacts/sprint-status.yaml`: BE-8-3 flipped `in-progress → done`. Pushed to main (paths-ignored — no CI run).
+  - [x] 10.2 [D] All gates green confirmed before flip per [[feedback-never-mark-done-before-everything-green]]: bootstrap PR pre-merge CI `success` · new repo post-merge main CI `success` · Milton-saas PR #42 pre-merge CI `success` · Milton-saas post-merge main CI `success` · Pierre G17-1 smoke 7/7. NO exceptions.
+  - [x] 10.3 [D] Change Log captures entire flow.
+  - [x] 10.4 [D] Surfaced to Pierre with done call + unblocked-stories list (BE-8-4 translator runtime lift is the natural next). Next-story call belongs to Pierre per [[feedback-pierre-owns-epic-scope]].
 
 ## Dev Notes
 
@@ -504,6 +504,8 @@ Story-specific subsection (BE-8-3 license + extraction gates):
 | 2026-05-16 | Pierre + Claude (Opus 4.7 1M, BMad Dev workflow) | **PAUSE-1 confirmed; Task 2 complete (2.1-2.3 all green).** Public repo live at https://github.com/Demandrel/milton-browser-extension. All 5 AC1 metadata gates verified: visibility public, license `agpl-3.0` (auto-applied by `gh repo create --license` flag — will be overwritten by `COPYING` AGPL-3.0-or-later in Task 4), default branch `main`, description matches package.json, all 6 topics present. GitHub-canonical `LICENSE` file sits on a single autoinit commit; Task 3.5 force-push will replace it with the filter-repo'd history. Pausing at PAUSE-2 (`git filter-repo` dry run). |
 | 2026-05-16 | Pierre + Claude (Opus 4.7 1M, BMad Dev workflow) | **PAUSE-2 + PAUSE-3 confirmed; Task 3 complete (3.1-3.6 all green).** Throwaway clone at `/tmp/milton-saas-be8-3-extraction` → filter-repo 537→13 commits in 1.61s total → force-pushed to new repo main. The 13-commit lineage (BE-1 PR #21 → BE-8-2 PR #40 + 3 pre-BE-1 planning commits) is publicly visible at https://github.com/Demandrel/milton-browser-extension/commits/main. Co-author trailers preserved in commit bodies. No CI fired (no `.github/workflows/` in the extracted tree — Milton-saas's workflows lived at repo root, not under `tools/browser-extension/`). BE-8-3 story file is NOT in the new repo yet (it's local-only on Milton-saas branch `chore/be-8-3-deprecate-extension-subtree`) — will land via the bootstrap PR (Task 7). Next: bootstrap PR combining Tasks 4 (license) + 5 (CI) + 7 (BMAD sweep) into a single new-repo PR for one CI run. |
 | 2026-05-16 | Claude (Opus 4.7 1M, BMad Dev workflow) | **Tasks 4 + 5 + 7 complete; bootstrap PR opened.** PR #1: https://github.com/Demandrel/milton-browser-extension/pull/1 (commit `c405ce9c`, 26 files +1456/-19). Task 6 (pre-push hook) SKIPPED per Task 6.4 escape hatch — CI gates suffice for solo extension repo. Local validation green: `pnpm install` 972ms / `typecheck` clean / `test` 111/111 in 309ms / `build` 149ms / bundle 43.02 kB → 12.07 kB gzipped. IPC-boundary self-check: `grep -rE "(milton/src-tauri\|@milton-saas\|src-tauri/)" src` returned ZERO hits — pasted in PR body. CI live: https://github.com/Demandrel/milton-browser-extension/actions/runs/25970454938 (background-watched). Next: await CI green → Pierre G17-1 smoke (Task 8 / AC10, 7 scenarios) → PAUSE-4 (Milton-saas-side stub PR). |
+| 2026-05-16 | Pierre + Claude (Opus 4.7 1M, BMad Dev workflow) | **Bootstrap PR #1 green + merged; Pierre G17-1 smoke 7/7 passed.** Bootstrap PR #1 pre-merge CI: `success` (21s). Squash-merged at 19:20:56 UTC as commit `eb2daf2b`. Post-merge main CI on new repo: `success` (16s). Pre-downloaded dist/ artifact to `~/Downloads/be-8-3-smoke/`; Pierre sideloaded + ran 7 scenarios (sideload + popup + arxiv save + Milton-quit + signed-out + BE-7 econstor PDF regression + BE-7 arxiv abs regression) — all green. Synced BE-8-3 story file to new repo main as `3c4789e` (paths-ignored, no CI). Status remains `in-progress` pending stub PR (PAUSE-4). |
+| 2026-05-16 | Pierre + Claude (Opus 4.7 1M, BMad Dev workflow) | **PAUSE-4 confirmed; Milton-saas stub PR #42 opened + merged + post-merge main CI green; BE-8-3 DONE.** Discarded stale `bindings.ts` regeneration; `git rm -rf tools/browser-extension/` removed 40 files; wrote 22-line stub README; updated Milton-saas root README (`## Companion Repositories` + `tools/` line in Project Structure). Pre-push hook all 4 gates green (format:check ✅ / lint:reactive ✅ / check ✅ / test 2799/2799 in 80.56s ✅). PR #42 opened: https://github.com/Demandrel/Milton-saas/pull/42. Pre-merge CI: `success` (13m12s). Squash-merged at 19:42 UTC as commit `7ddcf647`. Post-merge main CI run `25971158252`: `success` (13m35s). All 5 CI gates + smoke green; per [[feedback-never-mark-done-before-everything-green]] confirmed clear → flipped `BE-8-3-extension-extracted-to-public-agpl-repo: in-progress → done` in new repo sprint-status. **Story closed.** Net work: 2 PRs merged (Demandrel/milton-browser-extension#1 + Demandrel/Milton-saas#42), 1 public repo created (https://github.com/Demandrel/milton-browser-extension), 13-commit history preserved via filter-repo, AGPL signaling 3-layer (COPYING + package.json license + SPDX headers on 17 files), 1 deprecated stub. Unblocks BE-8-4 (translator runtime lift, depends on BE-8-3 per charter Story Map). |
 
 
 
