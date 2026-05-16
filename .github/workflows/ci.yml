@@ -12,6 +12,7 @@ on:
     paths-ignore:
       - '**/*.md'
       - '**/*.mdx'
+      - '_bmad/**'
       - '_bmad-output/**'
       - '.gitignore'
       - 'COPYING'
@@ -20,6 +21,7 @@ on:
     paths-ignore:
       - '**/*.md'
       - '**/*.mdx'
+      - '_bmad/**'
       - '_bmad-output/**'
       - '.gitignore'
       - 'COPYING'
