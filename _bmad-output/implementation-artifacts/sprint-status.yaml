@@ -127,7 +127,7 @@ development_status:
   # (multipart binary); ~50 MiB body cap; SSRF + size limits; tests.
   # Low risk. No deps. Parallelizable with BE-8-1, BE-8-3.
   # Theme: Capture parity.
-  BE-8-2-connector-bytes-endpoint: backlog
+  BE-8-2-connector-bytes-endpoint: done
 
   # BE-8-3: Extension extracted to public AGPL repo (charter Decision A1).
   # New public repo (slug TBD: Demandrel/milton-browser-extension or similar);
