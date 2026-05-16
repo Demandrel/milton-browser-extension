@@ -148,7 +148,7 @@ development_status:
   # before scaling — recommend arXiv per charter Risks table).
   # Medium-high risk. Depends on BE-8-3.
   # Theme: Capture parity.
-  BE-8-4-translator-runtime-lift: in-progress
+  BE-8-4-translator-runtime-lift: review
 
   # BE-8-5: Curated translator bundle (~50-100 publishers) + lazy CDN-fetch.
   # Build pipeline bundles top publishers (Elsevier suite, Wiley, Springer
