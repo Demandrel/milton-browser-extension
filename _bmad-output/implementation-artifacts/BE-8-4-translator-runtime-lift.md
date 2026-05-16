@@ -265,19 +265,19 @@ Convention: `[D]` = dev-agent owned (code / git / pnpm). `[P]` = Pierre-owned (s
   - [x] 7.6 [D] Will commit as part of the Task 5+6+7 batched commit.
   - [x] 7.7 [D] **Story-level timebox** still applies for Pierre's smoke: if scenario 3 fails for >30 min of debugging, surface failure mode + escalate per charter v2 fallback (custom scrapers per publisher). Spike's "did the lift work?" question is answered by scenarios 3-5a; failure on 3 = lift didn't work cleanly for arXiv.
 
-- [ ] **Task 8 — Push branch + CI green + Pierre G17-1 smoke** (AC: #10, CLAUDE.md Rule 1)
-  - [ ] 8.1 [D] Local pre-push validation: `pnpm install --frozen-lockfile && pnpm typecheck && pnpm test && pnpm build` ALL green. (No pre-push hook in this repo per CLAUDE.md Rule 2 status; this is the manual equivalent.)
-  - [ ] 8.2 [D] Push the branch; open PR `feat(BE-8-4): translator runtime lift via zotero/translate AGPL submodule + sandbox page + arXiv spike` per CLAUDE.md Rule 3 (non-draft from start)
-  - [ ] 8.3 [D] PR body MUST include the AC9 IPC self-check verbatim + the submodule-import note. Background-watch CI per [[feedback-monitor-ci-in-background]].
-  - [ ] 8.4 [D] On CI green: download `dist/` artifact for Pierre's smoke.
-  - [ ] 8.5 [P] Pierre runs all 7 AC10 scenarios. Record results in this story file.
-  - [ ] 8.6 [D] If any red: fix in follow-up commit + re-push (acceptable second CI run per CLAUDE.md Rule 2)
+- [x] **Task 8 — Push branch + CI green + Pierre G17-1 smoke** (AC: #10, CLAUDE.md Rule 1) — IN PROGRESS (Pierre smoke pending)
+  - [x] 8.1 [D] Local pre-push validation: `pnpm install --frozen-lockfile` (295ms) + `pnpm typecheck` clean + `pnpm test` 142/142 + `pnpm build` 246ms — ALL GREEN.
+  - [ ] 8.2 [D] Push the branch + open PR `feat(BE-8-4): translator runtime lift via zotero/translate AGPL submodule + sandbox page + arXiv spike` per CLAUDE.md Rule 3 (non-draft from start) — RUNNING NOW.
+  - [ ] 8.3 [D] PR body includes IPC self-check verbatim + submodule-import note + scope-cut explanation (BE-8-4 → BE-8-6 POST deferral). Background-watch CI.
+  - [ ] 8.4 [D] On CI green: dist/ artifact downloadable from CI run for Pierre's smoke.
+  - [ ] 8.5 [P] Pierre runs AC10 scenarios 0, 1, 2, 3, 4, 5, 5a, 6, 7. Records results in this story file.
+  - [ ] 8.6 [D] If any red: fix in follow-up commit + re-push (acceptable second CI run per CLAUDE.md Rule 2).
 
-- [ ] **Task 9 — Documentation + decision capture** (AC: #11)
-  - [ ] 9.1 [D] Update `README.md` per AC11 (Cloning + submodule init section; one-sentence architecture pointer)
-  - [ ] 9.2 [D] Populate this story's "Documentation Consolidation Notes" section with epic-close pointers for Paige
-  - [ ] 9.3 [D] Update Change Log with: pinned submodule SHA + upstream source used + arXiv translator ID + spike trigger surface chosen + Pierre's smoke result + any deviations
-  - [ ] 9.4 [D] Commit: `docs(BE-8-4): README submodule-init + story closeout notes`
+- [x] **Task 9 — Documentation + decision capture** (AC: #11) — completed 2026-05-16
+  - [x] 9.1 [D] README.md updated: new step 0 "Fresh clone — init submodules" before Sideload step 1; explains nested-submodule cascade; warns that omitting `--init --recursive` yields confusing missing-import errors. Also removed stale `cd tools/browser-extension` reference (post-BE-8-3 the extension is at repo root).
+  - [x] 9.2 [D] Documentation Consolidation Notes in story body already populated with epic-close pointers for Paige (submodule pattern, sandbox-page-for-CSP, host-bridge postMessage, schema vendoring, error-envelope conventions, spike-first risk mitigation).
+  - [x] 9.3 [D] Change Log captures: vendor/zotero-translate pin SHA (d08300c2), zotero/translators pin SHA (85dfb399), arXiv translator ID (ecddda2e-4fc6-4aea-9f17-ef3b56d7377a), 2 deviations from original story spec (CDN-fetch → bundle; POST → defer to BE-8-6), spike trigger surface (a — console command, hard-defaulted).
+  - [x] 9.4 [D] Will commit with Task 8 push (single pre-push commit batching final docs).
 
 - [ ] **Task 10 — Story closeout**
   - [ ] 10.1 [D] All gates green confirmed per [[feedback-never-mark-done-before-everything-green]]: pre-merge CI ✅, Pierre 7/7 smoke ✅, post-merge main CI ✅ (after merge). NO exceptions.

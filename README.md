@@ -83,12 +83,19 @@ Milton's local connector validates the extension's chrome-extension origin again
 
 Step-by-step to install the extension in Chrome / Edge / Brave:
 
+0. **Fresh clone — init submodules** (BE-8-4 onward)
+   ```bash
+   git clone https://github.com/Demandrel/milton-browser-extension
+   cd milton-browser-extension
+   git submodule update --init --recursive
+   ```
+   BE-8-4 added `vendor/zotero-translate` (AGPLv3) as a git submodule for the translator runtime, which in turn brings nested submodules (`zotero/utilities` + `zotero/zotero-schema`). A clone WITHOUT `--init --recursive` leaves these dirs empty and `pnpm typecheck` / `pnpm build` fail with confusing missing-import errors. See `_bmad-output/implementation-artifacts/BE-8-4-translator-runtime-lift.md` for the architecture.
+
 1. **Install dependencies**
    ```bash
-   cd tools/browser-extension
-   pnpm install --ignore-workspace
+   pnpm install
    ```
-   The `--ignore-workspace` flag keeps this self-contained — without it, pnpm 10 falls through to Milton's parent workspace. (The `.npmrc:ignore-workspace=true` setting in this directory is silently ignored by pnpm 10.28.2; only the CLI flag is honored. Tracked as tech-debt.)
+   (Post-BE-8-3 the extension is at this repo's root — no `cd tools/browser-extension` step. The `--ignore-workspace` flag historically used in Milton-saas is no longer needed here.)
 
 2. **(Optional) Set the translate base** — `cp .env.local.example .env.local`. Production URL is the default; only edit if you want to point at a local docker-compose stack.
 
