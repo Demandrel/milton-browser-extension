@@ -51,7 +51,17 @@ brief; this table is the lookup index.
 | 8 | BE-7 backwards compatibility | Coexist (`pdfUrl` survives; bytes-upload added on top) |
 | 9 | Distribution channel | Sideload-first (.crx) |
 | 10 | Manifest permissions | All-at-once at install (Zotero-Connector parity) |
-| **A** | **Extension repo structure** | **A1** — extension extracts to separate public repo `Demandrel/milton-browser-extension` (slug TBD at BE-8-3). Unambiguous AGPL boundary even though Milton-saas (parent) is already public. |
+| **A** | **Extension repo structure** | **A1** — extension extracted to separate public repo [`Demandrel/milton-browser-extension`](https://github.com/Demandrel/milton-browser-extension) 2026-05-16 via BE-8-3 (force-pushed filter-repo'd history `d42e037` → `ad60d7e`). Unambiguous AGPL boundary; Milton-saas (parent) is private as of 2026-05-16 (the original charter wording "already public" was incorrect — drift caught + corrected during BE-8-3 execution). |
+
+### Repo Extraction (BE-8-3 outcome, 2026-05-16)
+
+- **New public repo:** `Demandrel/milton-browser-extension` — visibility `public`, license `agpl-3.0` (auto-applied by `gh repo create`, replaced by `COPYING` AGPL-3.0-or-later in bootstrap PR), default branch `main`, 6 topics (`agpl`, `browser-extension`, `manifest-v3`, `milton`, `references`, `zotero`).
+- **History extraction:** 537 → 13 commits via `git filter-repo --subdirectory-filter tools/browser-extension` (0.47s rewrite + 1.14s repack in throwaway clone at `/tmp/milton-saas-be8-3-extraction`). Full BE-1 → BE-8-2 lineage preserved with original commit messages, author, dates, and co-author trailers.
+- **Force-pushed initialization:** `gh repo create --license agpl-3.0` autoinit commit `d42e037` (with AGPL-3.0 `LICENSE` file) replaced by filter-repo'd HEAD `ad60d7e` (BE-8-2). The `LICENSE` file is no longer on `main`; the bootstrap PR adds `COPYING` as the canonical license file.
+- **CI:** Extension-only pipeline at `.github/workflows/ci.yml` (~50 lines: pnpm install + typecheck + test + build + artifact upload; NO Tauri/Rust/SvelteKit toolchain, NO apt cache, `timeout-minutes: 10`).
+- **AGPL signaling:** 3-layer — `COPYING` at root (full GNU AGPL v3 text, 661 lines, SHA-256 `0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0`), `package.json` `"license": "AGPL-3.0-or-later"`, SPDX short-form headers on all 17 first-party source files under `src/**` (via idempotent `scripts/add-spdx-headers.sh`).
+- **Deprecated stub in Milton-saas:** delivered via the Milton-saas-side `chore(BE-8-3): ...` PR — `tools/browser-extension/` reduced to a ≤30-line `README.md` pointing at the new repo + cutover SHAs + AGPL note. `tools/translator-mirror/` UNTOUCHED in Milton-saas (operational sync + signing key stays at the source).
+- **IPC boundary verified:** `grep -rE "(milton/src-tauri|@milton-saas|src-tauri/)" src/` returned zero hits in the new repo at bootstrap time. The boundary remains HTTP-only (extension → Milton-desktop via `127.0.0.1:7521`; extension → Milton-server via `translate.milton.so`).
 
 ## Themes
 

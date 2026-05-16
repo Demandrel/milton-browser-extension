@@ -1275,9 +1275,9 @@ If Cloudflare or AWS SDK ships a breaking change between story creation (2026-05
 
 #### BE-8 sprint sources (canonical scope)
 
-- **Charter v2** — [`tools/browser-extension/_bmad-output/planning-artifacts/charter-v2.md`](../../planning-artifacts/charter-v2.md) (commit `e5600694`, PR #33) — Story Map row for BE-8-1 at line 105; Decision #2 / #6 / A1; Risks table line 146 (translator-mirror staleness mitigation); Tech Stack table line 174
-- **Product brief (BE-v2)** — [`_bmad-output/planning-artifacts/product-brief-browser-extension-v2-2026-05-15.md`](../../../../_bmad-output/planning-artifacts/product-brief-browser-extension-v2-2026-05-15.md) (commit `15c6aac1`, PR #32) — Solution section + 10 locked decisions; Marc persona for LLM-fallback context (BE-8-8)
-- **Zotero architecture research** — [`_bmad-output/research/zotero-architecture-research-2026-05-15.md`](../../../../_bmad-output/research/zotero-architecture-research-2026-05-15.md) — §1 translator count + AGPL header verification; §2 `repo.zotero.org` URL pattern (`REPOSITORY_URL = "https://repo.zotero.org/repo/"` + `${REPOSITORY_URL}code/{translatorID}?version=...`); §5 Vibero AGPL enforcement precedent; §6 bundle-size reality check
+- **Charter v2** — [`_bmad-output/planning-artifacts/charter-v2.md`](../planning-artifacts/charter-v2.md) (commit `e5600694` in Milton-saas, PR #33) — Story Map row for BE-8-1 at line 105; Decision #2 / #6 / A1; Risks table line 146 (translator-mirror staleness mitigation); Tech Stack table line 174
+- **Product brief (BE-v2)** — Milton-saas private repo: https://github.com/Demandrel/Milton-saas/blob/main/_bmad-output/planning-artifacts/product-brief-browser-extension-v2-2026-05-15.md (commit `15c6aac1`, PR #32) — Solution section + 10 locked decisions; Marc persona for LLM-fallback context (BE-8-8)
+- **Zotero architecture research** — Milton-saas private repo: https://github.com/Demandrel/Milton-saas/blob/main/_bmad-output/research/zotero-architecture-research-2026-05-15.md — §1 translator count + AGPL header verification; §2 `repo.zotero.org` URL pattern (`REPOSITORY_URL = "https://repo.zotero.org/repo/"` + `${REPOSITORY_URL}code/{translatorID}?version=...`); §5 Vibero AGPL enforcement precedent; §6 bundle-size reality check
 - **Sprint status** — [`tools/browser-extension/_bmad-output/implementation-artifacts/sprint-status.yaml`](./sprint-status.yaml) — `epic-be-8` flipped to `in-progress` at this story-creation start; `BE-8-1-translator-mirror-cdn-setup` will flip to `ready-for-dev` at workflow close
 
 #### BE-N previous-story context
@@ -1289,9 +1289,9 @@ If Cloudflare or AWS SDK ships a breaking change between story creation (2026-05
 
 #### Companion Milton sub-projects
 
-- **Translation server** — [`tools/translation-server/README.md`](../../../translation-server/README.md) — Pattern reference for `tools/*` sub-project conventions; per-user JWT auth (TS-6); BE-8-9 will downsize this stack after BE-8-1 + BE-8-8 land
-- **Browser extension** — [`tools/browser-extension/README.md`](../../../browser-extension/README.md) — Will gain a one-line "Companion infrastructure" pointer per File-Structure section
-- **Existing CI workflow** — [`.github/workflows/ci.yml`](../../../../.github/workflows/ci.yml) — Action-pin reference (`actions/checkout@v4`, `pnpm/action-setup@v4 version: 10`, `actions/setup-node@v4 node-version: '22'`)
+- **Translation server** — Milton-saas private repo: https://github.com/Demandrel/Milton-saas/blob/main/tools/translation-server/README.md — Pattern reference for `tools/*` sub-project conventions; per-user JWT auth (TS-6); BE-8-9 will downsize this stack after BE-8-1 + BE-8-8 land
+- **Browser extension** — this repo's root [`README.md`](../../README.md) — Carries the "Companion infrastructure" pointer per File-Structure section
+- **Existing CI workflow** — Milton-saas private repo: https://github.com/Demandrel/Milton-saas/blob/main/.github/workflows/ci.yml — Action-pin reference (`actions/checkout@v4`, `pnpm/action-setup@v4 version: 10`, `actions/setup-node@v4 node-version: '22'`); also see this repo's own `.github/workflows/ci.yml` (extension-only, ~50 lines, added by BE-8-3 bootstrap PR)
 
 #### Memory G-rules (MEMORY.md, applied throughout)
 

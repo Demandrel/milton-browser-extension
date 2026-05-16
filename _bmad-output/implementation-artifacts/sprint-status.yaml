@@ -1,8 +1,9 @@
-# generated: 2026-05-15
+# generated: 2026-05-15 (origin); 2026-05-16 (repo extraction via BE-8-3 — paths updated for new repo root)
 # project: Milton Browser Extension
 # project_key: browser-extension
 # tracking_system: file-system
-# story_location: tools/browser-extension/_bmad-output/implementation-artifacts
+# story_location: _bmad-output/implementation-artifacts    # post-BE-8-3 extraction (was: tools/browser-extension/_bmad-output/implementation-artifacts in Milton-saas)
+# repository: https://github.com/Demandrel/milton-browser-extension  # public, AGPL-3.0-or-later, extracted from Milton-saas (private) via BE-8-3 2026-05-16
 #
 # PURPOSE:
 # Chromium MV3 browser extension. Sprint 1 (MV1) shipped a URL-forwarder
@@ -44,17 +45,19 @@
 #
 # STORY PREFIX: BE-N (Sprint 1) · BE-8-N (Sprint 2)
 #
-# Charters:
-#   Sprint 1: tools/browser-extension/_bmad-output/planning-artifacts/charter.md
+# Charters (post-BE-8-3 paths inside this repo):
+#   Sprint 1: _bmad-output/planning-artifacts/charter.md
 #            (SUPERSEDED by charter-v2.md per 2026-05-15)
-#   Sprint 2: tools/browser-extension/_bmad-output/planning-artifacts/charter-v2.md
-#            Brief: _bmad-output/planning-artifacts/product-brief-browser-extension-v2-2026-05-15.md
+#   Sprint 2: _bmad-output/planning-artifacts/charter-v2.md
+#            Brief: lives in Milton-saas (private) at _bmad-output/planning-artifacts/product-brief-browser-extension-v2-2026-05-15.md
+#                   (https://github.com/Demandrel/Milton-saas/blob/main/_bmad-output/planning-artifacts/product-brief-browser-extension-v2-2026-05-15.md)
 
 generated: 2026-05-15
 project: Milton Browser Extension
 project_key: browser-extension
 tracking_system: file-system
-story_location: tools/browser-extension/_bmad-output/implementation-artifacts
+story_location: _bmad-output/implementation-artifacts
+repository: https://github.com/Demandrel/milton-browser-extension
 
 development_status:
   # ──────────────────────────────────────────────────────────────────────────
@@ -136,7 +139,7 @@ development_status:
   # in Milton-saas becomes deprecated stub pointing to new repo.
   # Low-medium risk. No deps. Parallelizable with BE-8-1, BE-8-2.
   # Theme: License execution.
-  BE-8-3-extension-extracted-to-public-agpl-repo: backlog
+  BE-8-3-extension-extracted-to-public-agpl-repo: in-progress
 
   # BE-8-4: Translator runtime lift. Import zotero/translate as AGPL submodule
   # into extracted repo; implement required Zotero.Translators / Zotero.HTTP /
