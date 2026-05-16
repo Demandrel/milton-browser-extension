@@ -26,14 +26,32 @@ export class TranslatorTimeoutError extends Error {
   }
 }
 
+type AttachmentCallback = (attachment: unknown, progress: number, error?: unknown) => void
+type ItemsDoneCallback = (newItems: ZoteroItem[]) => void
+
 class CollectingItemSaver {
   private readonly collected: ZoteroItem[] = []
 
-  saveItems(items: ZoteroItem[], callback: (success: boolean, savedItems: ZoteroItem[]) => void): void {
-    for (const item of items) {
+  // Framework signature: async saveItems(jsonItems, attachmentCallback, itemsDoneCallback).
+  // Must return a Promise (framework chains .then). attachmentCallback is for
+  // attachment download progress (ignored — BE-8-4 spike doesn't fetch
+  // attachments). itemsDoneCallback fires the framework's per-item handlers.
+  async saveItems(
+    jsonItems: ZoteroItem[],
+    _attachmentCallback?: AttachmentCallback,
+    itemsDoneCallback?: ItemsDoneCallback,
+  ): Promise<ZoteroItem[]> {
+    for (const item of jsonItems) {
       this.collected.push(item)
     }
-    callback(true, items)
+    if (typeof itemsDoneCallback === 'function') {
+      try {
+        itemsDoneCallback(jsonItems)
+      } catch (err) {
+        console.warn('[milton-sandbox] itemsDoneCallback threw:', err)
+      }
+    }
+    return jsonItems
   }
 
   getCollectedItems(): ZoteroItem[] {

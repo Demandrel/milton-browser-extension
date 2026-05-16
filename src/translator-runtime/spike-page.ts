@@ -17,11 +17,12 @@
 
 import {
   generateRequestId,
+  isFetchProxyRequest,
   isTranslateResponse,
   makeTranslateRequest,
   PROTOCOL_VERSION,
 } from './host-bridge'
-import type { ZoteroItem } from './zotero-types'
+import type { FetchProxyResponse, ZoteroItem } from './zotero-types'
 
 const ARXIV_TRANSLATOR_ID = 'ecddda2e-4fc6-4aea-9f17-ef3b56d7377a'
 const SPIKE_TIMEOUT_MS = 30_000
@@ -84,6 +85,57 @@ async function spike(url: string): Promise<ZoteroItem[]> {
 }
 
 ;(window as Window & { miltonRuntimeSpike?: typeof spike }).miltonRuntimeSpike = spike
+
+// Fetch-proxy handler — sandbox iframe runs at opaque origin and CANNOT
+// make cross-origin fetches even with manifest host_permissions. Sandbox
+// posts a fetch-request to us (spike-page = extension origin); we perform
+// the fetch (host_permissions apply here) and post a fetch-response back.
+function serializeHeaders(headers: Headers): string {
+  const lines: string[] = []
+  headers.forEach((value, key) => {
+    lines.push(`${key}: ${value}`)
+  })
+  return lines.join('\r\n')
+}
+
+window.addEventListener('message', async (event: MessageEvent) => {
+  if (!isFetchProxyRequest(event.data)) return
+  const req = event.data
+  const source = event.source as Window | null
+  if (source === null) return
+  try {
+    const resp = await fetch(req.url, {
+      method: req.method.toUpperCase(),
+      headers: req.options?.headers,
+      body: req.options?.body,
+      credentials: 'omit',
+    })
+    const responseText = await resp.text()
+    const reply: FetchProxyResponse = {
+      type: 'fetch-response',
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: req.requestId,
+      response: {
+        status: resp.status,
+        responseText,
+        responseHeaders: serializeHeaders(resp.headers),
+        responseURL: resp.url,
+      },
+    }
+    source.postMessage(reply, { targetOrigin: '*' })
+  } catch (err) {
+    const reply: FetchProxyResponse = {
+      type: 'fetch-response',
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: req.requestId,
+      error: {
+        code: 'FETCH_FAILED',
+        message: err instanceof Error ? err.message : String(err),
+      },
+    }
+    source.postMessage(reply, { targetOrigin: '*' })
+  }
+})
 
 console.log(
   `[milton-spike-page] ready (protocol v${PROTOCOL_VERSION}). Call: await miltonRuntimeSpike('https://arxiv.org/abs/...')`,

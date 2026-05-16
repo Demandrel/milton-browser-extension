@@ -120,7 +120,85 @@ function bootstrap(): void {
     Zotero.Date.init(dateFormatsJson)
   }
 
-  console.log('[milton-sandbox] zotero/translate runtime loaded; adapters installed')
+  // Surface framework debug logs to console so we can see translator
+  // progress (BE-8-4 instrumentation; can be silenced later).
+  ;(Zotero as unknown as { debug: (...a: unknown[]) => void }).debug = (...a: unknown[]) => {
+    console.log('[zotero.debug]', ...a)
+  }
+
+  // Patch Zotero.Translate.Web.setDocument to handle DOMParser-parsed docs
+  // (their doc.location can be null per HTML spec [Unforgeable] when our
+  // parseHtmlAsDocument override fails to apply). Original implementation
+  // does `this.setLocation(doc.location.href, this.rootDocument.location.href)`
+  // which crashes on null. We skip the inner setLocation call when
+  // _miltonFallbackUrl is set; caller is responsible for setLocation BEFORE
+  // setDocument.
+  const TranslateWebProto = (Zotero.Translate as unknown as { Web: { prototype: Record<string, unknown> } }).Web.prototype
+  const origSetDocument = TranslateWebProto.setDocument as (this: unknown, doc: Document) => void
+  TranslateWebProto.setDocument = function (this: { document?: Document; rootDocument?: Document; _miltonFallbackUrl?: string; setLocation: (loc: string, root: string) => void }, doc: Document): void {
+    if (doc.location === null && typeof this._miltonFallbackUrl === 'string') {
+      this.document = doc
+      if (this.rootDocument === undefined) {
+        this.rootDocument = doc
+      }
+      this.setLocation(this._miltonFallbackUrl, this._miltonFallbackUrl)
+    } else {
+      origSetDocument.call(this, doc)
+    }
+  } as unknown as (typeof TranslateWebProto.setDocument)
+
+  console.log('[milton-sandbox] zotero/translate runtime loaded; adapters installed + setDocument patched')
+}
+
+/**
+ * DOMParser-produced documents have `location === null` (HTML spec — they
+ * aren't associated with a Window). Document.location is `[Unforgeable]`
+ * so we can't override the instance property directly. Instead, wrap the
+ * doc in a Proxy that intercepts `.location` reads and returns a
+ * Location-shaped object; methods are bound to the real target so DOM
+ * methods (querySelector, etc.) keep working.
+ *
+ * Also injects a <base> element so doc.baseURI returns the original URL.
+ */
+function parseHtmlAsDocument(html: string, url: string): Document {
+  const realDoc = new DOMParser().parseFromString(html, 'text/html')
+  // Inject <base> so doc.baseURI returns the original URL.
+  const head = realDoc.querySelector('head') ?? realDoc.documentElement
+  const existingBase = head.querySelector('base')
+  if (existingBase === null) {
+    const baseEl = realDoc.createElement('base')
+    baseEl.href = url
+    head.insertBefore(baseEl, head.firstChild)
+  }
+  // Build a Location-shaped surface from the URL.
+  const urlObj = new URL(url)
+  const fakeLocation = {
+    href: urlObj.href,
+    origin: urlObj.origin,
+    protocol: urlObj.protocol,
+    host: urlObj.host,
+    hostname: urlObj.hostname,
+    port: urlObj.port,
+    pathname: urlObj.pathname,
+    search: urlObj.search,
+    hash: urlObj.hash,
+    toString: () => urlObj.href,
+  }
+  // Proxy the doc: intercept `.location` reads, bind methods to the
+  // real target so DOM internal-slot accesses (querySelector, etc.) work.
+  const proxy = new Proxy(realDoc, {
+    get(target: Document, prop: string | symbol): unknown {
+      if (prop === 'location') {
+        return fakeLocation
+      }
+      const value = Reflect.get(target, prop, target)
+      if (typeof value === 'function') {
+        return value.bind(target)
+      }
+      return value
+    },
+  })
+  return proxy as Document
 }
 
 interface RunTranslationArgs {
@@ -131,12 +209,14 @@ interface RunTranslationArgs {
 }
 
 async function runTranslation(args: RunTranslationArgs): Promise<ZoteroItem[]> {
+  console.log('[milton-sandbox] runTranslation start', { url: args.url, translatorId: args.translatorId, hasHtml: args.html !== undefined })
   const Zotero = getZotero()
   const bundled = getBundledTranslator(args.translatorId)
   if (bundled === null) {
     throw new Error(`Translator ${args.translatorId} not in bundle`)
   }
   registerTranslator(bundled)
+  console.log('[milton-sandbox] translator registered', bundled.metadata.label)
 
   let html = args.html
   if (html === undefined) {
@@ -158,17 +238,30 @@ async function runTranslation(args: RunTranslationArgs): Promise<ZoteroItem[]> {
     throw new Error('Zotero.Translate.Web missing — framework lift failed')
   }
   const translate = new Zotero.Translate.Web()
+  ;(translate as unknown as { _miltonFallbackUrl: string })._miltonFallbackUrl = args.url
   translate.setLocation(args.url)
-  const doc = new DOMParser().parseFromString(finalHtml, 'text/html')
+  console.log('[milton-sandbox] setLocation OK')
+  const doc = parseHtmlAsDocument(finalHtml, args.url)
   translate.setDocument(doc)
-  translate.setTranslator({ ...bundled.metadata, code: bundled.body })
+  console.log('[milton-sandbox] setDocument OK')
+  // runMode=1 (RUN_MODE_IN_BROWSER) — required by Translate.Web._translateTranslatorLoaded
+  // to dispatch to in-browser detectWeb/doWeb (else branch falls through silently).
+  translate.setTranslator({ ...bundled.metadata, code: bundled.body, runMode: 1 })
+  console.log('[milton-sandbox] setTranslator OK; translator.runMode=1')
   translate.setHandler('itemDone', (...handlerArgs: unknown[]) => {
-    // upstream signature: (translate, item) — we want the item
+    console.log('[milton-sandbox] itemDone handler fired', handlerArgs[1])
     const item = handlerArgs[1] as ZoteroItem | undefined
     if (item !== undefined) collected.push(item)
   })
-
+  translate.setHandler('error', (...handlerArgs: unknown[]) => {
+    console.error('[milton-sandbox] translate error handler fired', handlerArgs)
+  })
+  translate.setHandler('done', (...handlerArgs: unknown[]) => {
+    console.log('[milton-sandbox] translate done handler fired', handlerArgs)
+  })
+  console.log('[milton-sandbox] calling translate()')
   await translateWithTimeout(() => translate.translate(), args.translatorId, args.timeoutMs)
+  console.log('[milton-sandbox] translate() resolved with', collected.length, 'items')
   return collected
 }
 

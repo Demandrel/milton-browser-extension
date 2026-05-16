@@ -29,8 +29,11 @@ describe('translator-bundle', () => {
     expect(getBundledTranslator('nonexistent-translator-id')).toBeNull()
   })
 
-  it('parsed body does NOT contain the metadata header JSON', () => {
+  it('parsed body INCLUDES the metadata header JSON (framework evals `var ZOTERO_TRANSLATOR_INFO = ${body}` so metadata must be the value expression)', () => {
     const t = getBundledTranslator(ARXIV_ID)
-    expect(t!.body).not.toContain('"translatorID"')
+    expect(t!.body).toContain('"translatorID"')
+    // Sanity: body also contains the function declarations after the metadata
+    expect(t!.body).toMatch(/function\s+detectWeb/)
+    expect(t!.body).toMatch(/function\s+doWeb/)
   })
 })

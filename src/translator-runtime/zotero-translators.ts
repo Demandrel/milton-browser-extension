@@ -60,19 +60,65 @@ export function findWebTranslators(url: string): RegisteredTranslator[] {
  * Install our Zotero.Translators registry onto the framework-provided Zotero
  * global. Replaces upstream's `Zotero.Translators` which expects a SQLite/
  * IndexedDB backing store we don't provide.
+ *
+ * The framework's `_translatorProvider` defaults to `Zotero.Translators` and
+ * calls these methods during translation:
+ *   - get(id)                                  — translator-by-id lookup
+ *   - getWebTranslators(url)                   — match by `target` regex
+ *   - getWebTranslatorsForLocation(loc, root)  — location-based variant
+ *   - getCodeForTranslator(translator)         — lazy-load JS body
+ *   - getAllForType(type)                      — registry enumeration
+ *
+ * We populate `code` eagerly inside `get` / `getWebTranslators` so the
+ * `getCodeForTranslator` lazy-load is a no-op for already-resolved
+ * translators (returns the embedded code).
  */
 export function installZoteroTranslators(zotero: ZoteroGlobal): void {
-  zotero.Translators = {
+  const buildResolvedTranslator = (t: RegisteredTranslator): Record<string, unknown> => ({
+    ...t.metadata,
+    code: t.body,
+    // Framework checks translator.runMode in Translate.Web._translateTranslatorLoaded
+    // to decide between in-browser execution vs RPC to Zotero Standalone /
+    // Server. We always run in-browser (1 = RUN_MODE_IN_BROWSER per
+    // vendor/zotero-translate/src/translator.js); without this the branch
+    // falls through and translation silently never starts.
+    runMode: 1,
+  })
+
+  const provider = {
     get: (translatorID: string) => {
       const t = getRegisteredTranslator(translatorID)
-      return t === null ? null : { ...t.metadata, code: t.body }
+      return t === null ? null : buildResolvedTranslator(t)
     },
     getWebTranslators: async (url: string) => {
       const matches = findWebTranslators(url)
-      const translators = matches.map((t) => ({ ...t.metadata, code: t.body }))
-      // Upstream signature returns [translators, functions]; we have no
-      // function-style translators yet, so second array is always empty.
-      return [translators, []]
+      return [matches.map(buildResolvedTranslator), []]
+    },
+    getWebTranslatorsForLocation: async (location: unknown, _rootLocation?: unknown) => {
+      const url =
+        typeof location === 'string'
+          ? location
+          : (location as { href?: string } | null)?.href ?? ''
+      const matches = findWebTranslators(url)
+      return [matches.map(buildResolvedTranslator), []]
+    },
+    getCodeForTranslator: async (translator: unknown) => {
+      // Framework calls this with either the full translator object (with
+      // `.code` populated by our `get`) or a sparse `{translatorID}` stub.
+      const t = translator as { code?: string; translatorID?: string }
+      if (typeof t.code === 'string' && t.code.length > 0) return t.code
+      if (typeof t.translatorID === 'string') {
+        const reg = getRegisteredTranslator(t.translatorID)
+        if (reg !== null) return reg.body
+      }
+      throw new Error('getCodeForTranslator: translator not registered')
+    },
+    getAllForType: async (_type: unknown) => {
+      // BE-8-4 spike calls setTranslator directly; framework's getAllForType
+      // path isn't exercised. BE-8-5 will implement proper type filtering
+      // when the curated bundle lands.
+      return []
     },
   }
+  zotero.Translators = provider as unknown as ZoteroGlobal['Translators']
 }

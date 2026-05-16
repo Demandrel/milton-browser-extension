@@ -69,6 +69,8 @@ export interface ZoteroHttpResponse {
   response?: unknown
   responseHeaders: string
   responseURL: string
+  // XHR-shape compatibility for framework's Zotero.Utilities.Translate.request()
+  getAllResponseHeaders?: () => string
 }
 
 export interface ZoteroHttp {

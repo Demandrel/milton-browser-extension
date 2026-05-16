@@ -41,17 +41,22 @@ describe('installZoteroItemSaver', () => {
     expect(z.Translate?.ItemSaver).toBeDefined()
   })
 
-  it('collected items are retrievable via getCollectedItems()', () => {
+  it('collected items are retrievable via getCollectedItems() + itemsDoneCallback fires', async () => {
     const z: ZoteroGlobal = {}
     installZoteroItemSaver(z)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const Ctor = (z.Translate as any).ItemSaver
     const inst = new Ctor()
-    let okFlag = false
-    inst.saveItems([{ itemType: 'journalArticle', title: 'hello' }], (success: boolean) => {
-      okFlag = success
-    })
-    expect(okFlag).toBe(true)
+    let doneItems: unknown = null
+    const result = await inst.saveItems(
+      [{ itemType: 'journalArticle', title: 'hello' }],
+      undefined, // attachmentCallback unused
+      (newItems: unknown) => {
+        doneItems = newItems
+      },
+    )
+    expect(result).toEqual([{ itemType: 'journalArticle', title: 'hello' }])
+    expect(doneItems).toEqual([{ itemType: 'journalArticle', title: 'hello' }])
     expect(inst.getCollectedItems()).toEqual([{ itemType: 'journalArticle', title: 'hello' }])
   })
 })

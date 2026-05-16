@@ -103,8 +103,16 @@ let idIndex: Map<string, string> | null = null
 function buildIdIndex(): Map<string, string> {
   const idx = new Map<string, string>()
   for (const [key, entry] of Object.entries(REGISTRY)) {
-    const { metadata, bodyStart } = parseTranslatorHeader(entry.source)
-    entry.parsed = { metadata, body: entry.source.slice(bodyStart) }
+    const { metadata } = parseTranslatorHeader(entry.source)
+    // Body is the FULL translator source (incl. metadata object literal +
+    // license block + function declarations). The framework evals
+    //   `var ZOTERO_TRANSLATOR_INFO = ${body}`
+    // which requires the metadata block to BE the value, then the function
+    // declarations follow as top-level statements (ASI inserts `;` after
+    // the closing `}` of the object literal). Stripping the metadata
+    // block — as the original implementation did — leaves an invalid
+    // `var ZOTERO_TRANSLATOR_INFO = function ...` parse error.
+    entry.parsed = { metadata, body: entry.source }
     idx.set(metadata.translatorID, key)
   }
   return idx
