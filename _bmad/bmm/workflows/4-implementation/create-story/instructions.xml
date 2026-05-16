@@ -17,6 +17,18 @@
     written</critical>
   <critical>🎯 ZERO USER INTERVENTION: Process should be fully automated except for initial epic/story selection or missing documents</critical>
 
+  <critical>🔧 PIERRE-CUSTOMIZED DEFAULT FLOW (codified 2026-05-16 in milton-browser-extension; see memory [[feedback-create-story-default-flow]]):
+    The workflow.xml runner's substep 2c per-template-output `[a] Advanced Elicitation, [c] Continue, [p] Party-Mode, [y] YOLO` ask is
+    SUPPRESSED for this workflow. Template-output tags save content silently via Write/Edit; do NOT present the per-section prompt. After ALL
+    step 5 template-outputs are complete, step 6 (NEW) auto-runs advanced-elicitation method 17 (Red Team vs Blue Team) on the FULL drafted
+    story and auto-applies the blue-team hardening edits without per-change confirmation. Step 7 (NEW) asks Pierre once for final
+    ready-for-dev validation. Step 8 (was step 6) handles sprint-status update + completion report. To override (per-section elicitation
+    instead of auto-method-17), Pierre says "use per-section elicitation" before the workflow begins.</critical>
+  <critical>🔧 DURING DRAFT: If during step 5 you encounter a load-bearing architectural choice the dev-agent should NOT be left to decide
+    alone (e.g., contradicts a saved feedback memory, has multi-week downstream impact, depends on an external decision Pierre has unique
+    context for) — PAUSE and ask Pierre via AskUserQuestion. Save trivia / dev-discretion choices for the story file's "open decisions"
+    section rather than asking each.</critical>
+
   <step n="1" goal="Determine target story">
     <check if="{{story_path}} is provided by user or user provided the epic and story number such as 2-4 or 1.6 or epic 1 story 5">
       <action>Parse user-provided story path: extract epic_num, story_num, story_title from format like "1-2-user-auth"</action>
@@ -303,13 +315,85 @@
     <template-output file="{default_output_file}">
     story_completion_status</template-output>
 
-    <!-- CRITICAL: Set status to ready-for-dev -->
+    <!-- CRITICAL: Set story Status field in the file to: "ready-for-dev" -->
+    <!-- Note: this is the DRAFT status; step 7 confirms with Pierre before step 8 flips sprint-status -->
     <action>Set story Status to: "ready-for-dev"</action>
     <action>Add completion note: "Ultimate
     context engine analysis completed - comprehensive developer guide created"</action>
   </step>
 
-  <step n="6" goal="Update sprint status and finalize">
+  <step n="6" goal="Auto-apply Red Team vs Blue Team elicitation (method 17)">
+    <critical>🔴🔵 AUTO-RUN — DO NOT ASK USER WHETHER TO RUN THIS. Pierre's default flow always runs method 17 on every drafted story.</critical>
+    <critical>📂 Load method 17 from {project-root}/_bmad/core/workflows/advanced-elicitation/methods.csv ("Red Team vs Blue Team — Adversarial
+      attack-defend analysis to find vulnerabilities — critical for security testing and building robust solutions. Pattern: defense → attack
+      → hardening").</critical>
+
+    <action>Re-read the COMPLETE drafted story file at {{default_output_file}} to get the final state after all step 5 template-outputs</action>
+
+    <action>**Red Team pass** — Adopt an adversarial reviewer persona. Identify 5-12 specific weaknesses in the story that would cause
+      dev-story execution to fail, drift, or produce a low-quality result. Categories to scan (not all required; pick what fits):
+      - **Ambiguous AC:** acceptance criterion that two devs could reasonably implement differently
+      - **Missing edge case:** AC silent on a failure mode that will occur in production
+      - **Hidden assumption:** an unspoken premise that breaks if reality differs
+      - **Scope creep risk:** task that bleeds into a downstream story's territory without clear cut-line
+      - **Test coverage gap:** AC asserted but not tested; or test specified without clear pass/fail criteria
+      - **Integration risk:** cross-system contract under-specified (IPC shape, payload format, error envelope)
+      - **External dependency drift:** pinned version / URL / SHA could move between drafting and dev-story
+      - **Timebox absence:** high-risk task with no abort criterion (dev grinds for days on something that should have escalated)
+      - **Drift risk:** same fact stated in two places (story body + AC + dev notes) — update one, forget the other
+      - **Tooling silence:** instruction relies on a tool/script that doesn't exist or works differently than implied
+      - **Previous-story-rule violation:** contradicts a feedback memory, CLAUDE.md rule, or established convention
+      - **Verification blind spot:** AC depends on a check that can't be automated and isn't routed to manual smoke
+      Each attack: name the weakness in one sentence; specify the AC/Task/Section it targets; predict the concrete failure mode.</action>
+
+    <action>**Blue Team pass** — For each red-team attack, propose ONE specific hardening edit to the story file. The edit must be a concrete
+      Edit operation: an AC clarification, a Task subtask added, a Dev Notes paragraph added, a Reference added, a typed-error specification,
+      a timebox added, etc. Do NOT propose "consider this" — propose the actual text change.</action>
+
+    <action>**Auto-apply ALL blue-team edits** to the story file via Edit operations. Do NOT ask the user [y/n] per change. Pierre's safety net
+      is step 7's final validation, not per-change gating.</action>
+
+    <action>Add a Change Log entry at the bottom of the story file:
+      "| {{today}} | Claude ({{agent_model_name_version}}, BMad SM workflow auto-method-17) | Red Team vs Blue Team elicitation applied
+      automatically per Pierre-customized default flow. N hardening edits applied across AC/Task/Dev-Notes sections. Red-team attack
+      summary: [one-line per attack]. Story still ready-for-dev pending Pierre's step 7 validation. |"
+      Where N = count of edits applied. Replace [one-line per attack] with the actual list.</action>
+
+    <action>Display to user a CONCISE summary: "Red Team vs Blue Team applied: N attacks → N hardening edits. Key changes: [bullet list of
+      3-5 most impactful changes]. Full diff in story file Change Log."</action>
+  </step>
+
+  <step n="7" goal="Final ready-for-dev validation by Pierre">
+    <critical>🛑 THIS IS THE ONE AND ONLY USER-FACING ASK FOR THIS WORKFLOW (apart from step 1 epic/story selection + any step 5 critical-choice
+      pauses).</critical>
+
+    <action>Use AskUserQuestion to ask Pierre: "Story drafted + auto-hardened via Red Team vs Blue Team (method 17). Review at
+      {{default_output_file}}. Ready to flip sprint-status to ready-for-dev?" Options:
+      [1] Yes — flip to ready-for-dev (proceed to step 8)
+      [2] Edit first — describe the edit (Pierre provides edit instructions via Other; you apply them via Edit; re-present this validation
+      question after applying)
+      [3] Discard story file — abort the workflow without flipping sprint-status (rare; use for cases where Pierre decides the story
+      shouldn't exist at all)</action>
+
+    <check if="user response is [1] Yes">
+      <action>Proceed to step 8</action>
+    </check>
+
+    <check if="user response is [2] Edit first">
+      <action>Apply Pierre's edit instructions via Edit operations on the story file</action>
+      <action>Add a Change Log entry summarizing the edit applied</action>
+      <action>Re-present this same AskUserQuestion (loop until Pierre selects [1] or [3])</action>
+    </check>
+
+    <check if="user response is [3] Discard">
+      <action>Delete the story file via Bash `rm {{default_output_file}}`</action>
+      <action>Do NOT update sprint-status (story key remains `backlog`)</action>
+      <action>Report aborted to user</action>
+      <action>HALT — skip step 8</action>
+    </check>
+  </step>
+
+  <step n="8" goal="Update sprint status and finalize">
     <invoke-task>Validate against checklist at {installed_path}/checklist.md using _bmad/core/tasks/validate-workflow.xml</invoke-task>
     <action>Save story document unconditionally</action>
 
