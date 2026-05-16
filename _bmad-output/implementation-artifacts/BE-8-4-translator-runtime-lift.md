@@ -267,10 +267,10 @@ Convention: `[D]` = dev-agent owned (code / git / pnpm). `[P]` = Pierre-owned (s
 
 - [x] **Task 8 — Push branch + CI green + Pierre G17-1 smoke** (AC: #10, CLAUDE.md Rule 1) — IN PROGRESS (Pierre smoke pending)
   - [x] 8.1 [D] Local pre-push validation: `pnpm install --frozen-lockfile` (295ms) + `pnpm typecheck` clean + `pnpm test` 142/142 + `pnpm build` 246ms — ALL GREEN.
-  - [ ] 8.2 [D] Push the branch + open PR `feat(BE-8-4): translator runtime lift via zotero/translate AGPL submodule + sandbox page + arXiv spike` per CLAUDE.md Rule 3 (non-draft from start) — RUNNING NOW.
-  - [ ] 8.3 [D] PR body includes IPC self-check verbatim + submodule-import note + scope-cut explanation (BE-8-4 → BE-8-6 POST deferral). Background-watch CI.
-  - [ ] 8.4 [D] On CI green: dist/ artifact downloadable from CI run for Pierre's smoke.
-  - [ ] 8.5 [P] Pierre runs AC10 scenarios 0, 1, 2, 3, 4, 5, 5a, 6, 7. Records results in this story file.
+  - [x] 8.2 [D] Pushed `feat/BE-8-4-translator-runtime-lift` to origin. Opened PR #4 https://github.com/Demandrel/milton-browser-extension/pull/4 non-draft.
+  - [x] 8.3 [D] PR body includes verbatim AC9 IPC self-check + submodule-import note + both story-spec deviations (CDN→bundle, POST→BE-8-6) explained in full + smoke test plan as Test plan checklist.
+  - [x] 8.4 [D] CI run `25973677924` completed `success` in 23s (https://github.com/Demandrel/milton-browser-extension/actions/runs/25973677924). All 9 pipeline steps green (Checkout w/ submodules:recursive, Setup pnpm v10, Setup Node 22, Install --frozen-lockfile, Typecheck, Test, Build, Upload artifact). Artifact pre-downloaded to `~/Downloads/be-8-4-smoke/milton-browser-extension-1de2109e/` for Pierre's smoke convenience (per BE-8-3 precedent).
+  - [ ] 8.5 [P] **PIERRE — G17-1 SMOKE GATE NEXT.** AC10 scenarios 0-7 + 5a. Detailed instructions in PR #4 Test Plan section + surfaced in chat. After Pierre records results: dev resumes Task 10 closeout.
   - [ ] 8.6 [D] If any red: fix in follow-up commit + re-push (acceptable second CI run per CLAUDE.md Rule 2).
 
 - [x] **Task 9 — Documentation + decision capture** (AC: #11) — completed 2026-05-16
