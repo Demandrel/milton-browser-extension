@@ -135,6 +135,10 @@ Step-by-step to install the extension in Chrome / Edge / Brave:
 - BE-4 story: [`_bmad-output/implementation-artifacts/BE-4-auth-migration-connector-token.md`](_bmad-output/implementation-artifacts/BE-4-auth-migration-connector-token.md)
 - BE-2 story: [`_bmad-output/implementation-artifacts/BE-2-rich-popup-selectors.md`](_bmad-output/implementation-artifacts/BE-2-rich-popup-selectors.md)
 
+## Companion infrastructure
+
+- **Translator-mirror CDN** (BE-8-1, sprint 2) — Milton-hosted mirror of `zotero/translators` (served at `https://translators.milton.so/repo/`) consumed by the BE-8-5 curated-bundle build pipeline and the runtime long-tail lazy-fetch path. Runbook: [`../translator-mirror/README.md`](../translator-mirror/README.md).
+
 ## Tech stack
 
 - Vite ^7.3 + `@crxjs/vite-plugin` ^2.4 + TypeScript ^5.9 (Manifest V3)

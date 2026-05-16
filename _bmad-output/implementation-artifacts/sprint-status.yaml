@@ -114,14 +114,14 @@ development_status:
   # Risk-staircase ordered (greenfield → integration spike → architectural).
   # ──────────────────────────────────────────────────────────────────────────
 
-  epic-be-8: backlog
+  epic-be-8: in-progress
 
   # BE-8-1: Translator-mirror CDN setup. Cloudflare CDN + static origin
   # (R2 or KV); mirrors zotero/translators subset; metadata endpoint
   # (versioning + translator-id → bytes); pinned-at-build pull for bundled
   # subset. Low risk. No deps. Parallelizable with BE-8-2, BE-8-3.
   # Theme: Capture parity.
-  BE-8-1-translator-mirror-cdn-setup: backlog
+  BE-8-1-translator-mirror-cdn-setup: done
 
   # BE-8-2: Connector bytes endpoint. POST /references/{id}/pdf-bytes
   # (multipart binary); ~50 MiB body cap; SSRF + size limits; tests.
