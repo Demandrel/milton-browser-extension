@@ -6,8 +6,11 @@
 
 // postMessage protocol between the sandbox iframe and the popup/SW caller.
 // Version 1: translate-request/response + fetch-proxy-request/response.
-// BE-8-6 may extend the protocol for chrome.scripting.executeScript variants
-// (carry protocolVersion forward; consumers MUST check before accepting).
+// Version 2 (BE-8-5): adds translator-load-request/response for the lazy
+// CDN-fetch delegation path. v1 messages remain accepted by v2 listeners
+// (type guards check `protocolVersion === 1 || === 2`); new emitters stamp
+// PROTOCOL_VERSION.
+// BE-8-6 may bump to v3 when chrome.scripting.executeScript variants land.
 //
 // Origin validation: sandbox pages run at opaque origin ("null"), so receivers
 // rely on `event.source` identity (a Window reference) rather than the
@@ -15,13 +18,25 @@
 // messages before processing — see sandbox.ts / spike-page.ts / zotero-http.ts.
 
 import type {
+  BundledTranslator,
   FetchProxyRequest,
   FetchProxyResponse,
+  ProtocolVersion,
   TranslateRequest,
   TranslateResponse,
+  TranslatorLoadRequest,
+  TranslatorLoadResponse,
 } from './zotero-types'
 
-export const PROTOCOL_VERSION = 1 as const
+export const PROTOCOL_VERSION = 2 as const
+
+// Versions accepted by inbound type guards. Includes the current version
+// plus all prior compatible versions; v1 emitters interop with v2 listeners.
+const ACCEPTED_VERSIONS: ReadonlySet<ProtocolVersion> = new Set([1, 2])
+
+function isAcceptedVersion(v: unknown): v is ProtocolVersion {
+  return typeof v === 'number' && ACCEPTED_VERSIONS.has(v as ProtocolVersion)
+}
 
 // Centralized arXiv translator ID — sandbox.ts (spike trigger) and spike-page.ts
 // (request builder) both reference it. Keep one source of truth.
@@ -53,41 +68,39 @@ export type AnyMessage =
   | TranslateResponse
   | FetchProxyRequest
   | FetchProxyResponse
+  | TranslatorLoadRequest
+  | TranslatorLoadResponse
+
+function isTypedMessage(msg: unknown, expectedType: string): boolean {
+  if (typeof msg !== 'object' || msg === null) return false
+  const m = msg as { type?: string; protocolVersion?: unknown }
+  if (m.type !== expectedType) return false
+  if (!isAcceptedVersion(m.protocolVersion)) return false
+  return true
+}
 
 export function isTranslateRequest(msg: unknown): msg is TranslateRequest {
-  return (
-    typeof msg === 'object' &&
-    msg !== null &&
-    (msg as { type?: string }).type === 'translate-request' &&
-    (msg as { protocolVersion?: number }).protocolVersion === PROTOCOL_VERSION
-  )
+  return isTypedMessage(msg, 'translate-request')
 }
 
 export function isTranslateResponse(msg: unknown): msg is TranslateResponse {
-  return (
-    typeof msg === 'object' &&
-    msg !== null &&
-    (msg as { type?: string }).type === 'translate-response' &&
-    (msg as { protocolVersion?: number }).protocolVersion === PROTOCOL_VERSION
-  )
+  return isTypedMessage(msg, 'translate-response')
 }
 
 export function isFetchProxyRequest(msg: unknown): msg is FetchProxyRequest {
-  return (
-    typeof msg === 'object' &&
-    msg !== null &&
-    (msg as { type?: string }).type === 'fetch-request' &&
-    (msg as { protocolVersion?: number }).protocolVersion === PROTOCOL_VERSION
-  )
+  return isTypedMessage(msg, 'fetch-request')
 }
 
 export function isFetchProxyResponse(msg: unknown): msg is FetchProxyResponse {
-  return (
-    typeof msg === 'object' &&
-    msg !== null &&
-    (msg as { type?: string }).type === 'fetch-response' &&
-    (msg as { protocolVersion?: number }).protocolVersion === PROTOCOL_VERSION
-  )
+  return isTypedMessage(msg, 'fetch-response')
+}
+
+export function isTranslatorLoadRequest(msg: unknown): msg is TranslatorLoadRequest {
+  return isTypedMessage(msg, 'translator-load-request')
+}
+
+export function isTranslatorLoadResponse(msg: unknown): msg is TranslatorLoadResponse {
+  return isTypedMessage(msg, 'translator-load-response')
 }
 
 export function makeTranslateRequest(args: {
@@ -118,6 +131,32 @@ export function makeTranslateResponse(args: {
     protocolVersion: PROTOCOL_VERSION,
     requestId: args.requestId,
     items: args.items,
+    error: args.error,
+  }
+}
+
+export function makeTranslatorLoadRequest(args: {
+  requestId: string
+  translatorId: string
+}): TranslatorLoadRequest {
+  return {
+    type: 'translator-load-request',
+    protocolVersion: PROTOCOL_VERSION,
+    requestId: args.requestId,
+    translatorId: args.translatorId,
+  }
+}
+
+export function makeTranslatorLoadResponse(args: {
+  requestId: string
+  translator?: BundledTranslator
+  error?: TranslatorLoadResponse['error']
+}): TranslatorLoadResponse {
+  return {
+    type: 'translator-load-response',
+    protocolVersion: PROTOCOL_VERSION,
+    requestId: args.requestId,
+    translator: args.translator,
     error: args.error,
   }
 }
