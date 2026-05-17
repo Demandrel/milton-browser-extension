@@ -181,11 +181,19 @@ export function applyGenericWebpageDefaults(
   editable: EditableMetadata,
   isFromServerFallback: boolean,
 ): ConnectorReferencePayload {
+  // BE-8-6 smoke S4 fix: the server-translate envelope can return `undefined`
+  // for year/doi/journal even though TypeScript types them as required
+  // (string/number). `editable.year === 0` was false for undefined; the
+  // strict-equality checks meant the heuristic silently skipped on the
+  // exact case it was meant to catch (server-fallback on a generic page
+  // like example.com, where the server returns title-only). Use truthy
+  // checks — `!editable.year` covers `0`, `undefined`, `null`; `!editable.doi`
+  // covers `''`, `undefined`, `null`.
   const looksGeneric =
     isFromServerFallback &&
-    editable.doi.length === 0 &&
-    editable.year === 0 &&
-    editable.journal.length === 0
+    !editable.doi &&
+    !editable.year &&
+    !editable.journal
   if (!looksGeneric) return payload
   return {
     ...payload,
