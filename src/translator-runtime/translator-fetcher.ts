@@ -105,6 +105,7 @@ export type FetcherErrorCode =
   | 'NOT_IN_MANIFEST'
   | 'HASH_MISMATCH'
   | 'STORAGE_UNAVAILABLE'
+  | 'STORAGE_QUOTA_EXCEEDED'
 
 export class TranslatorFetcherError extends Error {
   readonly code: FetcherErrorCode
@@ -221,6 +222,16 @@ async function fetchAndVerifyManifestFresh(): Promise<{
   return { manifest, manifestBytes, signature, signatureHex: sigText.trim() }
 }
 
+/**
+ * Fetch the current mirror manifest, verifying its Ed25519 signature.
+ *
+ * @param force - When true, skip the 1h-TTL cache and refetch + re-verify
+ *   against the live CDN. Production callers leave this default (false);
+ *   `force=true` exists for tests + future cache-bust callers (e.g., a
+ *   "refresh translators now" UI action). Returning the cached manifest
+ *   on TTL-hit re-verifies the cached signature so cache-state-tamper
+ *   still fails closed.
+ */
 export async function fetchManifest(force = false): Promise<Manifest> {
   // Try cached first (unless caller forces refresh).
   if (!force) {
@@ -262,7 +273,15 @@ async function loadCachedManifest(): Promise<CachedManifest | null> {
     const cached = result[MANIFEST_CACHE_KEY]
     if (cached === undefined || cached === null) return null
     return cached as CachedManifest
-  } catch {
+  } catch (err) {
+    // Distinguish "no cache" from "storage faulted". Logging the underlying
+    // error preserves the fallback-to-fresh-fetch behavior (returning null)
+    // while making the storage failure visible in DevTools rather than
+    // silently masquerading as a cache miss.
+    console.warn(
+      '[translator-fetcher] loadCachedManifest: storage read failed; falling back to fresh fetch:',
+      err instanceof Error ? err.message : String(err),
+    )
     return null
   }
 }
@@ -342,7 +361,9 @@ async function saveCachedTranslator(translatorID: string, cached: CachedTranslat
     await storageSet({ [key]: cached })
   } catch (err) {
     // QUOTA_BYTES error surfaces here as a rejected promise. Evict the
-    // oldest entry + retry once. If still failing, surface to caller.
+    // oldest entry + retry once. If still failing, surface QUOTA_EXCEEDED
+    // (distinct from STORAGE_UNAVAILABLE) so consumers can distinguish
+    // "extension storage unreachable" from "you cached more than fits".
     const evicted = await evictOldestTranslatorEntry()
     if (evicted) {
       try {
@@ -350,14 +371,14 @@ async function saveCachedTranslator(translatorID: string, cached: CachedTranslat
         return
       } catch (retryErr) {
         throw new TranslatorFetcherError(
-          'STORAGE_UNAVAILABLE',
+          'STORAGE_QUOTA_EXCEEDED',
           `quota exceeded even after LRU eviction: ${retryErr instanceof Error ? retryErr.message : String(retryErr)}`,
         )
       }
     }
     throw new TranslatorFetcherError(
-      'STORAGE_UNAVAILABLE',
-      `storage.local.set failed: ${err instanceof Error ? err.message : String(err)}`,
+      'STORAGE_QUOTA_EXCEEDED',
+      `storage.local.set failed (no entries available to evict): ${err instanceof Error ? err.message : String(err)}`,
     )
   }
 }
