@@ -100,8 +100,22 @@ describe('scrapeActiveTabHtml', () => {
     })
   })
 
-  it('rejects HTML_TOO_LARGE for 3 MiB HTML', async () => {
-    const huge = 'a'.repeat(3 * 1024 * 1024)
+  it('accepts 4 MiB HTML (real Class 3 pages like ScienceDirect)', async () => {
+    // ScienceDirect article pages clock in at ~3.66 MiB rendered. The
+    // initial BE-8-6 2 MiB cap blocked them; bumped to 8 MiB so the
+    // Class 3 win this story enables actually fires.
+    const big = 'a'.repeat(4 * 1024 * 1024)
+    const exec = vi.fn().mockResolvedValue([
+      { result: { html: big, finalUrl: 'https://x.example/a' } },
+    ] as MockExecuteResult[])
+    installChromeStub(exec)
+
+    const out = await scrapeActiveTabHtml(1, 'https://x.example/a')
+    expect(out.html.length).toBe(4 * 1024 * 1024)
+  })
+
+  it('rejects HTML_TOO_LARGE for 9 MiB HTML (exceeds 8 MiB cap)', async () => {
+    const huge = 'a'.repeat(9 * 1024 * 1024)
     const exec = vi.fn().mockResolvedValue([
       { result: { html: huge, finalUrl: 'https://x.example/a' } },
     ] as MockExecuteResult[])

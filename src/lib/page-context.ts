@@ -17,17 +17,21 @@
 // `'scripting'` permission (declared in manifest.config.ts) makes the API
 // callable. No broad host_permissions needed — `activeTab` IS the grant.
 //
-// Size guard: capped at 2 MiB (rough proxy via String.length under V8's
+// Size guard: capped at 8 MiB (rough proxy via String.length under V8's
 // UTF-16 storage; reject larger pages with HTML_TOO_LARGE → popup falls
-// back to server flow which has its own bounded payload size). Heavy SPAs
-// (e.g., academic papers with embedded MathJax + supplementary tables)
-// can produce 5-10 MB `outerHTML` strings — passing those through
-// chrome.scripting's structured-clone serializer + the sandbox postMessage
-// is wasteful when the server-flow fallback exists.
+// back to server flow). Bumped from 2 MiB → 8 MiB during BE-8-6 smoke
+// after ScienceDirect article pages clocked in at 3.66 MiB (rendered DOM
+// w/ MathJax, supplementary tables, etc.); the 2 MiB initial guess
+// blocked the Class 3 win we're trying to enable. 8 MiB covers
+// ScienceDirect / Wiley / Springer / Nature / similar; truly pathological
+// pages (50+ MB) still reject. Chrome IPC handles 256 MiB per message;
+// structured-clone serializer handles MB strings without breaking a
+// sweat; the constraint is "translator time-to-parse" which is linear
+// and translators handle their natural page sizes anyway.
 
 import { isRestrictedUrl } from '../popup/popup-helpers'
 
-const MAX_HTML_BYTES = 2 * 1024 * 1024 // 2 MiB
+const MAX_HTML_BYTES = 8 * 1024 * 1024 // 8 MiB
 
 export type PageContextErrorCode =
   | 'SCRIPTING_FAILED'
