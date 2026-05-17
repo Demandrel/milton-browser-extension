@@ -10,6 +10,7 @@ import type { EditableMetadata, MetadataAuthor, MetadataPrimary, TagSummary } fr
 import {
   applyGenericWebpageDefaults,
   blankEditable,
+  decideBootRoute,
   decideTagInputEnter,
   detectPdfPage,
   editableToMapperInput,
@@ -557,5 +558,112 @@ describe('detectPdfPage · isRestrictedUrl integration', () => {
   })
   it('still accepts mimeType=application/pdf on a real URL', () => {
     expect(detectPdfPage('https://arxiv.org/pdf/1706.03762.pdf', 'application/pdf')).toBe(true)
+  })
+})
+
+// ── decideBootRoute (BE-8-6 code-review H3 fix) ────────────────────────────
+//
+// Pure helper that mirrors popup.ts:boot() routing. The PDF branch in
+// particular is the BE-7 regression check that AC15 S6 was supposed to cover
+// manually but was deferred — automating it here so the path is covered.
+
+describe('decideBootRoute', () => {
+  it('routes undefined URL to cannot-capture/no-url', () => {
+    expect(decideBootRoute({ url: undefined, candidateIds: [] })).toEqual({
+      kind: 'cannot-capture',
+      reason: 'no-url',
+    })
+  })
+
+  it('routes empty URL to cannot-capture/no-url', () => {
+    expect(decideBootRoute({ url: '', candidateIds: [] })).toEqual({
+      kind: 'cannot-capture',
+      reason: 'no-url',
+    })
+  })
+
+  it('routes about:blank to cannot-capture/no-url', () => {
+    expect(decideBootRoute({ url: 'about:blank', candidateIds: [] })).toEqual({
+      kind: 'cannot-capture',
+      reason: 'no-url',
+    })
+  })
+
+  it('routes chrome:// URLs to cannot-capture/restricted-url', () => {
+    expect(decideBootRoute({ url: 'chrome://extensions/', candidateIds: [] })).toEqual({
+      kind: 'cannot-capture',
+      reason: 'restricted-url',
+    })
+  })
+
+  it('routes file:// URLs to cannot-capture/restricted-url', () => {
+    expect(decideBootRoute({ url: 'file:///home/u/x.html', candidateIds: [] })).toEqual({
+      kind: 'cannot-capture',
+      reason: 'restricted-url',
+    })
+  })
+
+  // ── BE-7 PDF regression coverage (replaces deferred AC15 S6 manual smoke) ─
+
+  it('routes a PDF tab (mimeType signal) to pdf-server even with candidates', () => {
+    // arxiv-org translator MATCHES arxiv pdf URLs (via target regex), but
+    // PDF detection must short-circuit to server flow so BE-7's pdfUrl payload
+    // path runs (the connector downloads the binary server-side).
+    expect(
+      decideBootRoute({
+        url: 'https://arxiv.org/pdf/2303.08774.pdf',
+        mimeType: 'application/pdf',
+        candidateIds: ['arxiv-org'],
+      }),
+    ).toEqual({ kind: 'pdf-server' })
+  })
+
+  it('routes a PDF tab (URL suffix only) to pdf-server', () => {
+    expect(
+      decideBootRoute({
+        url: 'https://arxiv.org/pdf/2303.08774.pdf',
+        candidateIds: ['arxiv-org'],
+      }),
+    ).toEqual({ kind: 'pdf-server' })
+  })
+
+  it('routes PDF served at non-.pdf URL to pdf-server via mimeType signal', () => {
+    expect(
+      decideBootRoute({
+        url: 'https://example.com/download?file=paper',
+        mimeType: 'application/pdf',
+        candidateIds: [],
+      }),
+    ).toEqual({ kind: 'pdf-server' })
+  })
+
+  // ── client-vs-server routing ──────────────────────────────────────────────
+
+  it('routes HTML page with no candidates to no-candidates-server', () => {
+    expect(
+      decideBootRoute({
+        url: 'https://example.com',
+        candidateIds: [],
+      }),
+    ).toEqual({ kind: 'no-candidates-server' })
+  })
+
+  it('routes HTML page with candidates to client-translator', () => {
+    expect(
+      decideBootRoute({
+        url: 'https://www.sciencedirect.com/science/article/pii/S0140673624000010',
+        candidateIds: ['sciencedirect'],
+      }),
+    ).toEqual({ kind: 'client-translator' })
+  })
+
+  it('prefers cannot-capture over PDF detection (restricted PDF on file://)', () => {
+    expect(
+      decideBootRoute({
+        url: 'file:///home/u/paper.pdf',
+        mimeType: 'application/pdf',
+        candidateIds: [],
+      }),
+    ).toEqual({ kind: 'cannot-capture', reason: 'restricted-url' })
   })
 })

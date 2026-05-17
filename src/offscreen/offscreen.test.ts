@@ -8,6 +8,19 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+// BE-8-6 code-review M2 fix: mock translator-fetcher so the
+// translator-load-request handler tests don't try a real CDN fetch.
+vi.mock('../translator-runtime/translator-fetcher', () => ({
+  fetchTranslatorFromCdn: vi.fn(),
+  TranslatorFetcherError: class extends Error {
+    readonly code: string
+    constructor(code: string, message: string) {
+      super(message)
+      this.code = code
+    }
+  },
+}))
+
 // Stub chrome.runtime BEFORE importing offscreen.ts so its top-level
 // `chrome.runtime.onMessage.addListener` call hits our spy.
 
@@ -17,8 +30,19 @@ interface StoredListener {
 
 const runtimeListeners: StoredListener[] = []
 
+// Track window message listeners added during a test so afterEach can
+// remove them (each importOffscreen() re-adds two listeners; without
+// cleanup they accumulate and cross-contaminate tests).
+const trackedWindowListeners: { type: string; fn: EventListenerOrEventListenerObject }[] = []
+const originalWindowAdd = window.addEventListener.bind(window)
+
 beforeEach(() => {
   runtimeListeners.length = 0
+  trackedWindowListeners.length = 0
+  window.addEventListener = ((type: string, fn: EventListenerOrEventListenerObject) => {
+    trackedWindowListeners.push({ type, fn })
+    return originalWindowAdd(type, fn)
+  }) as typeof window.addEventListener
   ;(globalThis as unknown as { chrome: unknown }).chrome = {
     runtime: {
       id: 'test-extension-id',
@@ -32,6 +56,13 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  for (const { type, fn } of trackedWindowListeners) {
+    window.removeEventListener(type, fn)
+  }
+  trackedWindowListeners.length = 0
+  window.addEventListener = originalWindowAdd
+  // Drop any sandbox iframes the test created (next test re-creates).
+  document.querySelectorAll('#sandbox').forEach((el) => el.remove())
   delete (globalThis as unknown as { chrome?: unknown }).chrome
   vi.resetModules()
 })
@@ -154,5 +185,213 @@ describe('offscreen — chrome.runtime IPC', () => {
     )
     expect(mod._offscreenInternals.cancelledRequestIds.has('rc')).toBe(true)
     mod._offscreenInternals.resetForTests()
+  })
+})
+
+// ── BE-8-6 code-review M2 fix: tests for fetch-proxy + translator-load ────
+// Both handlers were lifted from spike-page.ts as production code; the
+// original lift had no tests in offscreen.test.ts. These tests prove the
+// sandbox→offscreen postMessage round-trip works on both message kinds.
+
+describe('offscreen — fetch-proxy handler (window.message)', () => {
+  it('handles fetch-request: fetches URL + replies with fetch-response', async () => {
+    await importOffscreen()
+    const sandboxIframe = document.getElementById('sandbox') as HTMLIFrameElement
+    const sandboxWin = sandboxIframe.contentWindow as Window
+    // Mock fetch on the offscreen-side window (jsdom).
+    const fetchMock = vi.fn().mockImplementation(
+      async () => new Response('payload-body', { status: 200, headers: { 'content-type': 'text/plain' } }),
+    )
+    ;(globalThis as unknown as { fetch: typeof fetch }).fetch = fetchMock
+    // Spy on the sandbox window's postMessage so we can capture the reply.
+    const replySpy = vi.spyOn(sandboxWin, 'postMessage').mockImplementation(() => undefined)
+
+    // Dispatch a fetch-request MessageEvent whose source is the sandbox iframe.
+    const event = new MessageEvent('message', {
+      data: {
+        type: 'fetch-request',
+        protocolVersion: 2,
+        requestId: 'fp1',
+        url: 'https://example.com/x',
+        method: 'GET',
+      },
+      source: sandboxWin,
+    })
+    window.dispatchEvent(event)
+
+    // Let microtasks settle so fetch + postMessage complete.
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://example.com/x',
+      expect.objectContaining({ method: 'GET', credentials: 'omit' }),
+    )
+    expect(replySpy).toHaveBeenCalled()
+    const reply = replySpy.mock.calls[0][0]
+    expect(reply).toMatchObject({
+      type: 'fetch-response',
+      protocolVersion: 2,
+      requestId: 'fp1',
+      response: expect.objectContaining({ status: 200, responseText: 'payload-body' }),
+    })
+  })
+
+  it('replies with FETCH_FAILED when fetch throws', async () => {
+    await importOffscreen()
+    const sandboxIframe = document.getElementById('sandbox') as HTMLIFrameElement
+    const sandboxWin = sandboxIframe.contentWindow as Window
+    ;(globalThis as unknown as { fetch: typeof fetch }).fetch = vi
+      .fn()
+      .mockRejectedValue(new Error('network down')) as unknown as typeof fetch
+    const replySpy = vi.spyOn(sandboxWin, 'postMessage').mockImplementation(() => undefined)
+
+    const event = new MessageEvent('message', {
+      data: {
+        type: 'fetch-request',
+        protocolVersion: 2,
+        requestId: 'fp2',
+        url: 'https://example.com/y',
+        method: 'GET',
+      },
+      source: sandboxWin,
+    })
+    window.dispatchEvent(event)
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(replySpy).toHaveBeenCalled()
+    const reply = replySpy.mock.calls[0][0]
+    expect(reply).toMatchObject({
+      type: 'fetch-response',
+      requestId: 'fp2',
+      error: expect.objectContaining({ code: 'FETCH_FAILED' }),
+    })
+  })
+
+  it('ignores fetch-request not from the sandbox iframe (isFromExpectedSource gate)', async () => {
+    await importOffscreen()
+    const sandboxIframe = document.getElementById('sandbox') as HTMLIFrameElement
+    const sandboxWin = sandboxIframe.contentWindow as Window
+    const fetchMock = vi.fn()
+    ;(globalThis as unknown as { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch
+    const replySpy = vi.spyOn(sandboxWin, 'postMessage').mockImplementation(() => undefined)
+
+    // source is NOT the sandbox window → gate must reject.
+    const event = new MessageEvent('message', {
+      data: {
+        type: 'fetch-request',
+        protocolVersion: 2,
+        requestId: 'fp3',
+        url: 'https://example.com/z',
+        method: 'GET',
+      },
+      source: window, // not the sandbox iframe's contentWindow
+    })
+    window.dispatchEvent(event)
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(replySpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('offscreen — translator-load-request handler (window.message)', () => {
+  it('handles translator-load-request: returns verified translator', async () => {
+    const fetcherMod = await import('../translator-runtime/translator-fetcher')
+    const mockFetch = vi.mocked(fetcherMod.fetchTranslatorFromCdn)
+    mockFetch.mockResolvedValueOnce({
+      metadata: { translatorID: 'abc-123', label: 'Test Translator' },
+      source: 'function detectWeb() {}',
+    } as never)
+
+    await importOffscreen()
+    const sandboxIframe = document.getElementById('sandbox') as HTMLIFrameElement
+    const sandboxWin = sandboxIframe.contentWindow as Window
+    const replySpy = vi.spyOn(sandboxWin, 'postMessage').mockImplementation(() => undefined)
+
+    const event = new MessageEvent('message', {
+      data: {
+        type: 'translator-load-request',
+        protocolVersion: 2,
+        requestId: 'tl1',
+        translatorId: 'abc-123',
+      },
+      source: sandboxWin,
+    })
+    window.dispatchEvent(event)
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(mockFetch).toHaveBeenCalledWith('abc-123')
+    expect(replySpy).toHaveBeenCalled()
+    const reply = replySpy.mock.calls[0][0]
+    expect(reply).toMatchObject({
+      type: 'translator-load-response',
+      protocolVersion: 2,
+      requestId: 'tl1',
+      translator: expect.objectContaining({ source: 'function detectWeb() {}' }),
+    })
+  })
+
+  it('replies with NOT_IN_MANIFEST when CDN returns null', async () => {
+    const fetcherMod = await import('../translator-runtime/translator-fetcher')
+    const mockFetch = vi.mocked(fetcherMod.fetchTranslatorFromCdn)
+    mockFetch.mockResolvedValueOnce(null as never)
+
+    await importOffscreen()
+    const sandboxIframe = document.getElementById('sandbox') as HTMLIFrameElement
+    const sandboxWin = sandboxIframe.contentWindow as Window
+    const replySpy = vi.spyOn(sandboxWin, 'postMessage').mockImplementation(() => undefined)
+
+    const event = new MessageEvent('message', {
+      data: {
+        type: 'translator-load-request',
+        protocolVersion: 2,
+        requestId: 'tl2',
+        translatorId: 'missing',
+      },
+      source: sandboxWin,
+    })
+    window.dispatchEvent(event)
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(replySpy).toHaveBeenCalled()
+    const reply = replySpy.mock.calls[0][0]
+    expect(reply).toMatchObject({
+      type: 'translator-load-response',
+      requestId: 'tl2',
+      error: expect.objectContaining({ code: 'NOT_IN_MANIFEST' }),
+    })
+  })
+
+  it('replies with TranslatorFetcherError code when fetcher throws', async () => {
+    const fetcherMod = await import('../translator-runtime/translator-fetcher')
+    const mockFetch = vi.mocked(fetcherMod.fetchTranslatorFromCdn)
+    mockFetch.mockRejectedValueOnce(
+      new fetcherMod.TranslatorFetcherError('SIGNATURE_INVALID', 'bad sig'),
+    )
+
+    await importOffscreen()
+    const sandboxIframe = document.getElementById('sandbox') as HTMLIFrameElement
+    const sandboxWin = sandboxIframe.contentWindow as Window
+    const replySpy = vi.spyOn(sandboxWin, 'postMessage').mockImplementation(() => undefined)
+
+    const event = new MessageEvent('message', {
+      data: {
+        type: 'translator-load-request',
+        protocolVersion: 2,
+        requestId: 'tl3',
+        translatorId: 'bad',
+      },
+      source: sandboxWin,
+    })
+    window.dispatchEvent(event)
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(replySpy).toHaveBeenCalled()
+    const reply = replySpy.mock.calls[0][0]
+    expect(reply).toMatchObject({
+      type: 'translator-load-response',
+      requestId: 'tl3',
+      error: expect.objectContaining({ code: 'SIGNATURE_INVALID' }),
+    })
   })
 })

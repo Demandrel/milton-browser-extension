@@ -263,6 +263,38 @@ export function detectPdfPage(url: string, mimeType?: string): boolean {
   return path.endsWith('.pdf')
 }
 
+/**
+ * BE-8-6 code-review fix (H3): the boot-time routing decision extracted as a
+ * pure helper so the four branches (cannot-capture/PDF-server/no-candidates/
+ * client) can be unit-tested without standing up the whole popup module.
+ * BE-7's PDF-page regression coverage lives here now.
+ */
+export type BootRoute =
+  | { kind: 'cannot-capture'; reason: 'no-url' | 'restricted-url' }
+  | { kind: 'pdf-server' }
+  | { kind: 'no-candidates-server' }
+  | { kind: 'client-translator' }
+
+export function decideBootRoute(args: {
+  url: string | undefined
+  mimeType?: string
+  candidateIds: string[]
+}): BootRoute {
+  if (!args.url || args.url === 'about:blank') {
+    return { kind: 'cannot-capture', reason: 'no-url' }
+  }
+  if (isRestrictedUrl(args.url)) {
+    return { kind: 'cannot-capture', reason: 'restricted-url' }
+  }
+  if (detectPdfPage(args.url, args.mimeType)) {
+    return { kind: 'pdf-server' }
+  }
+  if (args.candidateIds.length === 0) {
+    return { kind: 'no-candidates-server' }
+  }
+  return { kind: 'client-translator' }
+}
+
 export const POPUP_HELPERS_CONSTANTS = {
   CURRENT_YEAR,
   MIN_YEAR,

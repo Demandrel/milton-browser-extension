@@ -38,12 +38,12 @@ import type { ZoteroItem } from '../translator-runtime/zotero-types'
 import {
   applyGenericWebpageDefaults,
   blankEditable,
+  decideBootRoute,
   decideTagInputEnter,
   detectPdfPage,
   editableToMapperInput,
   filterTagSuggestions,
   formatAuthorsDisplay,
-  isRestrictedUrl,
   isTitleValid,
   metadataToEditable,
   parseYearInput,
@@ -204,12 +204,12 @@ async function boot() {
   currentTabMimeType = tabs[0]?.mimeType
   // BE-8-6: capture tab id for chrome.scripting.executeScript.
   currentTabId = tabs[0]?.id
-  if (!url || url === 'about:blank') {
-    setState({ kind: 'cannot-capture', reason: 'no-url' })
-    return
-  }
-  if (isRestrictedUrl(url)) {
-    setState({ kind: 'cannot-capture', reason: 'restricted-url' })
+
+  // Pre-flight URL routing (no-URL + restricted-URL guards). Candidate
+  // discovery requires a valid URL, so it runs AFTER this branch.
+  const preRoute = decideBootRoute({ url, mimeType: currentTabMimeType, candidateIds: [] })
+  if (preRoute.kind === 'cannot-capture') {
+    setState({ kind: 'cannot-capture', reason: preRoute.reason })
     return
   }
   currentUrl = url
@@ -229,22 +229,34 @@ async function boot() {
   // pdfUrl path preserved). No translator candidates → straight to server
   // (no translator-running flash). Candidates available → try client first;
   // on success → preview; on miss → translator-fallback → server.
-  if (detectPdfPage(url, currentTabMimeType)) {
-    enterServerFlow(url)
-    return
-  }
+  // Router lookup happens before the final route decision so the helper sees
+  // the real candidate list (decideBootRoute is pure; routing logic ≡ helper).
   let candidateIds: string[] = []
-  try {
-    candidateIds = await findCandidateTranslatorIds(url)
-  } catch (err) {
-    console.warn('[milton-popup] router failure; falling back to server', err)
+  // For PDF pages we skip router entirely (perf + BE-7 parity); else look up.
+  if (!detectPdfPage(url!, currentTabMimeType)) {
+    try {
+      candidateIds = await findCandidateTranslatorIds(url!)
+    } catch (err) {
+      console.warn('[milton-popup] router failure; falling back to server', err)
+    }
   }
-  if (candidateIds.length === 0) {
-    console.log('[milton-popup] translator-fallback reason=no-match')
-    enterServerFlow(url)
-    return
+  const route = decideBootRoute({ url, mimeType: currentTabMimeType, candidateIds })
+  switch (route.kind) {
+    case 'pdf-server':
+      enterServerFlow(url!)
+      return
+    case 'no-candidates-server':
+      console.log('[milton-popup] translator-fallback reason=no-match')
+      enterServerFlow(url!)
+      return
+    case 'client-translator':
+      await tryClientTranslator(url!, candidateIds)
+      return
+    case 'cannot-capture':
+      // Unreachable: pre-route caught this. Defensive.
+      setState({ kind: 'cannot-capture', reason: route.reason })
+      return
   }
-  await tryClientTranslator(url, candidateIds)
 }
 
 /**
