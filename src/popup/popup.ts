@@ -248,6 +248,10 @@ let pdfUploadAbort: AbortController | null = null
 // until the next boot() call. Avoids relying on the popup console (which dies
 // on outside click — see memory `extension-popup-console-impossible`).
 let lastFlowAOutcome: string | null = null
+// Same idea for Flow B: stash a truncated summary of items[0].attachments so
+// we can see exactly what the translator returned (and why extractPdfAttachmentUrl
+// found no PDF). Cleared at boot().
+let lastFlowBAttachmentsDump: string | null = null
 
 void boot()
 
@@ -261,6 +265,7 @@ async function boot() {
   pdfAttachmentMode = 'none'
   pdfUploadAbort = null
   lastFlowAOutcome = null
+  lastFlowBAttachmentsDump = null
 
   // AC2 — read current tab URL + id (BE-8-6 needs tabId for chrome.scripting).
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true })
@@ -546,6 +551,26 @@ async function tryClientTranslator(url: string, candidateIds: string[]): Promise
     pendingPdfAttachmentUrl = pdfAttachmentUrl
     pdfAttachmentMode = 'flow-b'
   }
+  // BE-8-7 diagnostic: stash a truncated dump of items[0].attachments so the
+  // debug stripe shows what the translator actually returned. Helpful when
+  // Flow B doesn't fire (mode=none) — answers "did translator emit nothing,
+  // emit something with wrong shape, or hit a captcha-blocked PDF link?".
+  const rawAttachments = (items[0] as { attachments?: unknown }).attachments
+  if (Array.isArray(rawAttachments)) {
+    if (rawAttachments.length === 0) {
+      lastFlowBAttachmentsDump = 'attachments=[]'
+    } else {
+      try {
+        lastFlowBAttachmentsDump = `attachments=${JSON.stringify(rawAttachments).slice(0, 250)}`
+      } catch {
+        lastFlowBAttachmentsDump = `attachments=<unserializable ${rawAttachments.length} items>`
+      }
+    }
+  } else if (rawAttachments === undefined) {
+    lastFlowBAttachmentsDump = 'attachments=undefined'
+  } else {
+    lastFlowBAttachmentsDump = `attachments=<not-array: ${typeof rawAttachments}>`
+  }
 
   // Translation succeeded — flash translator-done state, then enter preview.
   setState({ kind: 'translator-done', itemCount: items.length, publisherLabel })
@@ -715,6 +740,7 @@ function render(): void {
     if (lastFlowAOutcome !== null) parts.push(`flowA=${lastFlowAOutcome}`)
     if (pendingPdfBytes !== null) parts.push(`bytes=${pendingPdfBytes.byteLength}`)
     if (pendingPdfAttachmentUrl !== null) parts.push('flowB-url-staged')
+    if (lastFlowBAttachmentsDump !== null) parts.push(lastFlowBAttachmentsDump)
     const stripe = document.createElement('div')
     stripe.className = 'milton-popup-debug-stripe'
     stripe.textContent = parts.join(' · ')
