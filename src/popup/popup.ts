@@ -436,6 +436,28 @@ function enterServerFlow(url: string): void {
       })
       return
     }
+    // BE-8-7 (fix 2026-05-18): when server-translate returns no-metadata AND
+    // we have Class 2 bytes/URL staged, DON'T transition to error-no-metadata
+    // — that would discard the staged bytes and break the entire Class 2 win.
+    // Cloudflare/Anubis publishers block the server-side fetch (that's why
+    // BE-8-7 exists), so server-translate is GUARANTEED to fail no-metadata
+    // for the exact case bytes are needed. Fall back to instant-save: use the
+    // tab title (or URL) as a placeholder title; user clicks Save → reference
+    // is created → bytes upload. User can edit the title later in Milton, or
+    // BE-8-8 LLM-fallback will eventually enrich from the PDF bytes. This
+    // overrides AC11's deferral; see story Change Log 2026-05-18.
+    const hasPendingPdf = pendingPdfBytes !== null || pendingPdfAttachmentUrl !== null
+    if (
+      hasPendingPdf &&
+      result.via === 'translate-server' &&
+      result.error.kind === 'no-metadata'
+    ) {
+      const instantTitle = (currentTabTitle ?? '').trim() || url
+      patchPreview({
+        metadata: { kind: 'ready', editable: blankEditable(instantTitle) },
+      })
+      return
+    }
     if (result.via === 'token-mint') {
       dispatchTokenMintError(result.error)
     } else {
