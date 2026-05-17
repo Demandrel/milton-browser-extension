@@ -1,6 +1,6 @@
 # Story BE-8.6: Class 3 capture flow
 
-Status: review
+Status: done
 
 <!-- BMad SM workflow create-story output. Method-17 hardening pass: see Change Log. -->
 

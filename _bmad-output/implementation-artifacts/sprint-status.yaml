@@ -166,7 +166,7 @@ development_status:
   # translator-running / translator-done / translator-fallback states.
   # Medium-high risk. Depends on BE-8-4, BE-8-5.
   # Theme: Capture parity.
-  BE-8-6-class-3-capture-flow: review
+  BE-8-6-class-3-capture-flow: done
 
   # BE-8-7: Class 2 capture + paste-failure UX. Extension fetches PDF bytes
   # client-side using user's session (same-origin fetch within tab context —
