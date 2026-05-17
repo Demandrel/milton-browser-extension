@@ -1,6 +1,6 @@
 # Story BE-8.4: Translator Runtime Lift
 
-Status: done
+Status: review
 Origin: Charter v2 Story Map row BE-8-4 (`_bmad-output/planning-artifacts/charter-v2.md` line 118). The architectural lift that BE-v2 hinges on — without it BE-8-5 (curated bundle), BE-8-6 (Class 3 capture), and BE-8-7 (Class 2 capture) have no engine to plug into. Charter Risks table line 149: lift carries a known "Zotero-desktop-specific assumptions don't lift cleanly to browser-content-script context" risk; mitigation is the integration-spike sub-task (one publisher end-to-end before scaling — recommend arXiv).
 Depends on: BE-8-3 (done — extension extracted to public AGPL repo; submodule import requires the unambiguously-AGPL repo boundary established 2026-05-16). BE-8-1 (done — translator-mirror CDN at `translators.milton.so/repo/` provides the translator bytes the spike fetches).
 Unblocks: BE-8-5 (curated translator bundle — depends on runtime), BE-8-6 (Class 3 capture flow — runs runtime in page context via `chrome.scripting.executeScript`), BE-8-7 (Class 2 capture — uses the same runtime surface for metadata before bytes upload).
@@ -279,13 +279,14 @@ Convention: `[D]` = dev-agent owned (code / git / pnpm). `[P]` = Pierre-owned (s
   - [x] 9.3 [D] Change Log captures: vendor/zotero-translate pin SHA (d08300c2), zotero/translators pin SHA (85dfb399), arXiv translator ID (ecddda2e-4fc6-4aea-9f17-ef3b56d7377a), 2 deviations from original story spec (CDN-fetch → bundle; POST → defer to BE-8-6), spike trigger surface (a — console command, hard-defaulted).
   - [x] 9.4 [D] Will commit with Task 8 push (single pre-push commit batching final docs).
 
-- [x] **Task 10 — Story closeout (DONE)** — completed 2026-05-17
-  - [x] 10.1 [D] Gates green: pre-merge CI ✅ (PR #4 CI green 25s); Pierre smoke spike-side ✅ (S3+S4+S5 runtime lift validated); BE-7 regression ✅ for non-Cloudflare sites (S7); S6 econstor result accepted as NOT a regression per charter v2 problem statement (BE-7 baseline; BE-8-7 fixes this class). Post-merge main CI background-watched per `[[feedback-monitor-post-merge-ci-on-main]]`.
-  - [x] 10.2 [D] Story Status `review → done`. Sprint-status `review → done`.
-  - [x] 10.3 [D] Merge recommendation surfaced; Pierre said "go" 2026-05-17.
-  - [x] 10.4 [D] `gh pr merge 4 --squash --delete-branch` — PR #4 squash-merged on main as commit `94573a1`. Branch `feat/BE-8-4-translator-runtime-lift` deleted on remote.
-  - [x] 10.5 [D] `chore(BE-8-4): mark done` commit on main flips sprint-status `review → done` (paths-ignored — no CI re-fire).
-  - [x] 10.6 [D] Unblocked stories surfaced: **BE-8-5** (curated translator bundle pipeline — natural next; bundle infra design has now hit real constraints from BE-8-4 deviations); **BE-8-6** (Class 3 capture flow — popup state-machine extended; provides the SW + offscreen-doc broker that solves the sandbox→127.0.0.1 POST problem BE-8-4 deferred); **BE-8-7** (Class 2 capture — addresses scenario 6 econstor case via in-browser PDF fetch with user session cookies). All 3 are now buildable on top of the lifted runtime.
+- [-] **Task 10 — Story closeout — PARTIALLY COMPLETE** (premature `done` flip reverted; code-review gate pending)
+  - [x] 10.1 [D] Gates passed so far: pre-merge CI ✅ (PR #4, 25s); Pierre smoke S3+S4+S5+S5a+S7 ✅; S6 accepted as not-a-regression; post-merge main CI ✅.
+  - [x] 10.2 [D] Merge done — PR #4 squash-merged on main as `94573a1`; branch `feat/BE-8-4-translator-runtime-lift` deleted on remote.
+  - [x] 10.3 [D] Initial sprint-status flip `review → done` was PREMATURE — code-review had not yet run. Pierre caught it 2026-05-17 and corrected the rule (see new memory `[[feedback-code-review-required-before-done]]`). Sprint-status reverted `done → review`.
+  - [ ] 10.4 [P+D] **NEXT — Code-review.** Pierre runs `/bmad_bmm_code-review` (recommend a DIFFERENT LLM than the one that implemented this story — fresh context catches more). Surfaces 3-10 specific findings.
+  - [ ] 10.5 [D] Fix code-review findings via follow-up commits to main (small) OR a follow-up PR (if material). Re-run CI on the changes.
+  - [ ] 10.6 [D] After code-review findings closed + CI green again: flip sprint-status `review → done` for real.
+  - [ ] 10.7 [D] Surface unblocked stories: **BE-8-5** (curated bundle pipeline), **BE-8-6** (Class 3 capture + SW/offscreen-doc broker that resolves BE-8-4's deferred POST), **BE-8-7** (Class 2 capture — fixes S6 econstor Cloudflare case).
 
 ## Dev Notes
 
