@@ -1,6 +1,6 @@
 # Story BE-8.4: Translator Runtime Lift
 
-Status: review
+Status: done
 Origin: Charter v2 Story Map row BE-8-4 (`_bmad-output/planning-artifacts/charter-v2.md` line 118). The architectural lift that BE-v2 hinges on — without it BE-8-5 (curated bundle), BE-8-6 (Class 3 capture), and BE-8-7 (Class 2 capture) have no engine to plug into. Charter Risks table line 149: lift carries a known "Zotero-desktop-specific assumptions don't lift cleanly to browser-content-script context" risk; mitigation is the integration-spike sub-task (one publisher end-to-end before scaling — recommend arXiv).
 Depends on: BE-8-3 (done — extension extracted to public AGPL repo; submodule import requires the unambiguously-AGPL repo boundary established 2026-05-16). BE-8-1 (done — translator-mirror CDN at `translators.milton.so/repo/` provides the translator bytes the spike fetches).
 Unblocks: BE-8-5 (curated translator bundle — depends on runtime), BE-8-6 (Class 3 capture flow — runs runtime in page context via `chrome.scripting.executeScript`), BE-8-7 (Class 2 capture — uses the same runtime surface for metadata before bytes upload).
@@ -279,13 +279,13 @@ Convention: `[D]` = dev-agent owned (code / git / pnpm). `[P]` = Pierre-owned (s
   - [x] 9.3 [D] Change Log captures: vendor/zotero-translate pin SHA (d08300c2), zotero/translators pin SHA (85dfb399), arXiv translator ID (ecddda2e-4fc6-4aea-9f17-ef3b56d7377a), 2 deviations from original story spec (CDN-fetch → bundle; POST → defer to BE-8-6), spike trigger surface (a — console command, hard-defaulted).
   - [x] 9.4 [D] Will commit with Task 8 push (single pre-push commit batching final docs).
 
-- [-] **Task 10 — Story closeout (review handoff)** — IN PROGRESS
-  - [x] 10.1 [D] Gates green check: pre-merge CI ✅ (PR #4 CI green 23s); Pierre smoke spike-side ✅ (S3+S4+S5 — runtime lift validated); BE-7 regression ✅ for non-Cloudflare sites (S7); BE-7 regression on Cloudflare sites (S6) — NOT a regression per charter v2 problem statement (BE-7 baseline behavior; v2 architecture exists to fix this). Post-merge main CI watch happens after Pierre approves merge.
-  - [x] 10.2 [D] Story Status flipped `in-progress → review` (this commit). Sprint-status BE-8-4 flipped `in-progress → review`.
-  - [x] 10.3 [D] Merge recommendation surfaced in chat: "BE-8-4 PR #4 — gates green · recommend merge."
-  - [ ] 10.4 [D] On Pierre "go": `gh pr merge 4 --squash --delete-branch`; background-watch post-merge main CI.
-  - [ ] 10.5 [D] Post-merge `chore(BE-8-4): mark done` commit on `main` flips sprint-status `review → done` (paths-ignored — no CI).
-  - [ ] 10.6 [D] Surface unblocked stories: BE-8-5 (curated translator bundle pipeline) is the natural next; BE-8-6 (Class 3 capture flow — popup state machine + offscreen-doc broker) + BE-8-7 (Class 2 capture — addresses scenario 6 econstor case) also unblocked.
+- [x] **Task 10 — Story closeout (DONE)** — completed 2026-05-17
+  - [x] 10.1 [D] Gates green: pre-merge CI ✅ (PR #4 CI green 25s); Pierre smoke spike-side ✅ (S3+S4+S5 runtime lift validated); BE-7 regression ✅ for non-Cloudflare sites (S7); S6 econstor result accepted as NOT a regression per charter v2 problem statement (BE-7 baseline; BE-8-7 fixes this class). Post-merge main CI background-watched per `[[feedback-monitor-post-merge-ci-on-main]]`.
+  - [x] 10.2 [D] Story Status `review → done`. Sprint-status `review → done`.
+  - [x] 10.3 [D] Merge recommendation surfaced; Pierre said "go" 2026-05-17.
+  - [x] 10.4 [D] `gh pr merge 4 --squash --delete-branch` — PR #4 squash-merged on main as commit `94573a1`. Branch `feat/BE-8-4-translator-runtime-lift` deleted on remote.
+  - [x] 10.5 [D] `chore(BE-8-4): mark done` commit on main flips sprint-status `review → done` (paths-ignored — no CI re-fire).
+  - [x] 10.6 [D] Unblocked stories surfaced: **BE-8-5** (curated translator bundle pipeline — natural next; bundle infra design has now hit real constraints from BE-8-4 deviations); **BE-8-6** (Class 3 capture flow — popup state-machine extended; provides the SW + offscreen-doc broker that solves the sandbox→127.0.0.1 POST problem BE-8-4 deferred); **BE-8-7** (Class 2 capture — addresses scenario 6 econstor case via in-browser PDF fetch with user session cookies). All 3 are now buildable on top of the lifted runtime.
 
 ## Dev Notes
 
