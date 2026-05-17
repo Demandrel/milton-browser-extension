@@ -146,7 +146,6 @@ type State =
   | { kind: 'translator-fallback'; reason: TranslatorFallbackReason }
   | PreviewState
   | { kind: 'posting'; payload: ConnectorReferencePayload }
-  | { kind: 'debug-confirm'; payload: ConnectorReferencePayload; metadataSource: MetadataSource }
   | { kind: 'success'; id: string }
   | { kind: 'signed-out' }
   | { kind: 'error-no-metadata' }
@@ -589,42 +588,6 @@ function render(): void {
     case 'posting':
       root.innerHTML = `<p class="milton-popup-loading">Saving to Milton…</p>`
       break
-
-    case 'debug-confirm': {
-      // BE-8-6 smoke S4 debug — temporary state showing exactly what will
-      // be POSTed to the connector. Pierre reads + clicks Post to proceed.
-      const dbgPayload = state.payload
-      const dbgMs = state.metadataSource
-      root.innerHTML = `
-        <p class="milton-popup-header">S4 DEBUG — confirm payload</p>
-        <p class="milton-popup-helper"><strong>metadataSource:</strong> ${escapeHtml(dbgMs)}</p>
-        <pre style="font-size:11px;background:#f4f4f4;padding:8px;border-radius:4px;overflow:auto;max-height:240px;white-space:pre-wrap;word-break:break-word">${escapeHtml(
-          JSON.stringify(
-            {
-              type: dbgPayload.type,
-              year: dbgPayload.year,
-              title: dbgPayload.title,
-              url: dbgPayload.url,
-              doi: dbgPayload.doi,
-            },
-            null,
-            2,
-          ),
-        )}</pre>
-        <button class="milton-popup-button" id="dbg-post">POST to connector</button>
-        <button class="milton-popup-button milton-popup-button-secondary" id="dbg-cancel">Cancel</button>
-      `
-      bind('dbg-post', () => {
-        if (state.kind !== 'debug-confirm') return
-        const finalPayload = state.payload
-        setState({ kind: 'posting', payload: finalPayload })
-        void createReference(finalPayload).then(dispatchCreateReferenceResult)
-      })
-      bind('dbg-cancel', () => {
-        retry()
-      })
-      break
-    }
 
     case 'success':
       root.innerHTML = `<p class="milton-popup-success">Saved to Milton ✓</p>`
@@ -1642,12 +1605,7 @@ async function save(): Promise<void> {
     state.metadataSource === 'server-translate',
   )
 
-  // BE-8-6 smoke S4 DEBUG: alert() apparently doesn't survive in popup
-  // context for Pierre's Chrome setup, so route through a manual-confirm
-  // debug state instead. User reads the payload IN THE POPUP, clicks
-  // "POST" to actually save. Remove on next commit.
-  setState({ kind: 'debug-confirm', payload, metadataSource: state.metadataSource })
-  return
+  setState({ kind: 'posting', payload })
   const result = await createReference(payload)
   dispatchCreateReferenceResult(result)
 }
