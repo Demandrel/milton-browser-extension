@@ -243,6 +243,12 @@ let pdfAttachmentMode: PdfAttachmentMode = 'none'
 // 'timeout' result that the success branch surfaces as pdfAttached: 'failed'.
 let pdfUploadAbort: AbortController | null = null
 
+// BE-8-7 diagnostic (DEV-only): the last Flow A outcome string so the popup's
+// debug stripe can show WHY Flow A took a path. Survives the boot() reset
+// until the next boot() call. Avoids relying on the popup console (which dies
+// on outside click — see memory `extension-popup-console-impossible`).
+let lastFlowAOutcome: string | null = null
+
 void boot()
 
 async function boot() {
@@ -254,6 +260,7 @@ async function boot() {
   pendingPdfAttachmentUrl = null
   pdfAttachmentMode = 'none'
   pdfUploadAbort = null
+  lastFlowAOutcome = null
 
   // AC2 — read current tab URL + id (BE-8-6 needs tabId for chrome.scripting).
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true })
@@ -339,6 +346,7 @@ async function tryFlowAClientPdfFetch(url: string): Promise<void> {
   if (currentTabId === undefined) {
     console.warn('[milton-popup] no tabId for Flow A; falling back to BE-7')
     pdfAttachmentMode = 'be-7-fallback'
+    lastFlowAOutcome = 'NO_TAB_ID'
     enterServerFlow(url)
     return
   }
@@ -348,11 +356,17 @@ async function tryFlowAClientPdfFetch(url: string): Promise<void> {
     })
     pendingPdfBytes = result.bytes
     pdfAttachmentMode = 'flow-a'
+    lastFlowAOutcome = `OK ${result.bytes.byteLength}b`
   } catch (err) {
     const code = err instanceof PdfFetchInTabError ? err.code : 'UNKNOWN'
+    const httpStatus = err instanceof PdfFetchInTabError ? err.httpStatus : undefined
+    const errMsg = err instanceof Error ? err.message : String(err)
     console.log(`[milton-popup] pdf-class2-fallback reason=${code}`)
     pendingPdfBytes = null
     pdfAttachmentMode = 'be-7-fallback'
+    lastFlowAOutcome = httpStatus !== undefined
+      ? `${code} status=${httpStatus}`
+      : `${code} ${errMsg.slice(0, 80)}`
   }
   enterServerFlow(url)
 }
@@ -436,19 +450,19 @@ function enterServerFlow(url: string): void {
       })
       return
     }
-    // BE-8-7 (fix 2026-05-18): when server-translate returns no-metadata AND
-    // we have Class 2 bytes/URL staged, DON'T transition to error-no-metadata
-    // — that would discard the staged bytes and break the entire Class 2 win.
-    // Cloudflare/Anubis publishers block the server-side fetch (that's why
-    // BE-8-7 exists), so server-translate is GUARANTEED to fail no-metadata
-    // for the exact case bytes are needed. Fall back to instant-save: use the
-    // tab title (or URL) as a placeholder title; user clicks Save → reference
-    // is created → bytes upload. User can edit the title later in Milton, or
-    // BE-8-8 LLM-fallback will eventually enrich from the PDF bytes. This
-    // overrides AC11's deferral; see story Change Log 2026-05-18.
+    // BE-8-7 (fix 2026-05-18, broadened later same day): when server-translate
+    // returns no-metadata AND either (a) Class 2 bytes/URL staged OR (b) we're
+    // on a detected PDF page, DON'T transition to error-no-metadata. The
+    // tab-title fallback gives the user a savable reference; on Save: if
+    // bytes are staged → upload via BE-8-2; if not but PDF page → set pdfUrl
+    // so BE-7 attempts server-side fetch (may also fail for Cloudflare, but
+    // at least the reference exists). User can edit title in Milton later;
+    // BE-8-8 LLM-fallback will enrich from the PDF bytes once shipped.
+    // Overrides AC11's deferral; see story Change Log 2026-05-18.
     const hasPendingPdf = pendingPdfBytes !== null || pendingPdfAttachmentUrl !== null
+    const isPdfPage = detectPdfPage(url, currentTabMimeType)
     if (
-      hasPendingPdf &&
+      (hasPendingPdf || isPdfPage) &&
       result.via === 'translate-server' &&
       result.error.kind === 'no-metadata'
     ) {
@@ -689,6 +703,21 @@ function patchPreview(patch: Partial<PreviewState>): void {
 
 function render(): void {
   root.innerHTML = ''
+  // BE-8-7 DEV-only diagnostic stripe (memory `extension-popup-console-impossible`):
+  // surface the BE-8-7 state in the visible popup so debugging doesn't require
+  // the popup console. Rendered AFTER state markup so it doesn't disrupt
+  // existing layout; conditional on import.meta.env.DEV (stripped from prod).
+  const renderDebugStripe = (): void => {
+    if (!import.meta.env.DEV) return
+    const parts: string[] = [`mode=${pdfAttachmentMode}`]
+    if (lastFlowAOutcome !== null) parts.push(`flowA=${lastFlowAOutcome}`)
+    if (pendingPdfBytes !== null) parts.push(`bytes=${pendingPdfBytes.byteLength}`)
+    if (pendingPdfAttachmentUrl !== null) parts.push('flowB-url-staged')
+    const stripe = document.createElement('div')
+    stripe.className = 'milton-popup-debug-stripe'
+    stripe.textContent = parts.join(' · ')
+    root.appendChild(stripe)
+  }
   switch (state.kind) {
     case 'loading-tab':
     case 'loading-health':
@@ -862,6 +891,7 @@ function render(): void {
       bind('retry', retry)
       break
   }
+  renderDebugStripe()
 }
 
 // ── Preview rendering ──────────────────────────────────────────────────────
