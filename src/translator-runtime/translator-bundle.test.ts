@@ -4,12 +4,27 @@
 // This file is part of milton-browser-extension.
 // See COPYING for license terms.
 
-import { describe, expect, it } from 'vitest'
-import { getBundledTranslator, listBundledTranslatorIDs } from './translator-bundle'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  _resetForTests,
+  _setVerifiedSet,
+  getBundledTranslator,
+  listBundledTranslatorIDs,
+  verifyAllBundleIntegrity,
+} from './translator-bundle'
 
 const ARXIV_ID = 'ecddda2e-4fc6-4aea-9f17-ef3b56d7377a'
 
 describe('translator-bundle', () => {
+  // Most tests want the production-like flow: integrity verified + set
+  // installed, so getBundledTranslator returns real translators. AC6 gate
+  // tests reset and exercise the unbootstrapped state explicitly.
+  beforeEach(async () => {
+    _resetForTests()
+    const verified = await verifyAllBundleIntegrity()
+    _setVerifiedSet(verified)
+  })
+
   it('lists arXiv among the bundled translators (BE-8-5 — curated bundle of ~26 translators)', () => {
     const ids = listBundledTranslatorIDs()
     expect(ids).toContain(ARXIV_ID)
@@ -52,5 +67,56 @@ describe('translator-bundle', () => {
     const t = getBundledTranslator(ARXIV_ID)
     expect(t).not.toBeNull()
     expect(t!.body).toContain('BEGIN LICENSE BLOCK')
+  })
+})
+
+// ─── BE-8-5 AC6: runtime bundle integrity check ─────────────────────────
+describe('translator-bundle integrity (AC6)', () => {
+  afterEach(() => {
+    _resetForTests()
+    vi.restoreAllMocks()
+  })
+
+  it('verifyAllBundleIntegrity returns the full set of bundled translators when all hashes match', async () => {
+    _resetForTests()
+    const verified = await verifyAllBundleIntegrity()
+    // Every translator in the bundle should verify against its pin entry
+    // (the refresh script wrote both; bit-flips between then and now would
+    // mean someone tampered with the repo).
+    expect(verified.size).toBe(listBundledTranslatorIDs().length)
+    expect(verified.has(ARXIV_ID)).toBe(true)
+  })
+
+  it('getBundledTranslator returns null when verifiedSet === null (bootstrap-not-run defense)', () => {
+    _resetForTests() // verifiedSet starts null
+    expect(getBundledTranslator(ARXIV_ID)).toBeNull()
+  })
+
+  it('getBundledTranslator returns null for translatorIDs not in verifiedSet', async () => {
+    _resetForTests()
+    // Install an EMPTY verified set — every lookup should now be gated off
+    // even though the registry still contains the translators.
+    _setVerifiedSet(new Set())
+    expect(getBundledTranslator(ARXIV_ID)).toBeNull()
+  })
+
+  it('getBundledTranslator returns null for translatorIDs in registry but excluded from verifiedSet', async () => {
+    _resetForTests()
+    // Install a verified set that DELIBERATELY excludes arXiv — simulates
+    // arXiv source-bytes failing the integrity check while the rest pass.
+    const verified = await verifyAllBundleIntegrity()
+    verified.delete(ARXIV_ID)
+    _setVerifiedSet(verified)
+    expect(getBundledTranslator(ARXIV_ID)).toBeNull()
+    // A different translator that DID verify should still resolve.
+    const remaining = [...verified][0]
+    expect(getBundledTranslator(remaining)).not.toBeNull()
+  })
+
+  it('returns null for translatorIDs that are not in the bundle at all', async () => {
+    _resetForTests()
+    const verified = await verifyAllBundleIntegrity()
+    _setVerifiedSet(verified)
+    expect(getBundledTranslator('00000000-0000-0000-0000-000000000000')).toBeNull()
   })
 })

@@ -15,5 +15,5 @@
     "skipLibCheck": true,
     "verbatimModuleSyntax": false
   },
-  "include": ["src/**/*", "manifest.config.ts", "vite.config.ts"]
+  "include": ["src/**/*", "manifest.config.ts", "vite.config.ts", "translator-bundle-pin.json"]
 }

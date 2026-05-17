@@ -50,7 +50,12 @@ import dateFormatsJson from '../../vendor/zotero-translate/modules/utilities/res
 import { installZoteroHttp } from './zotero-http'
 import { installZoteroTranslators, registerTranslator } from './zotero-translators'
 import { installZoteroItemSaver, translateWithTimeout, TranslatorTimeoutError } from './zotero-translate'
-import { getBundledTranslator } from './translator-bundle'
+import {
+  _setVerifiedSet,
+  getBundledTranslator,
+  listBundledTranslatorIDs,
+  verifyAllBundleIntegrity,
+} from './translator-bundle'
 import {
   ARXIV_TRANSLATOR_ID,
   isFromExpectedSource,
@@ -150,6 +155,32 @@ function bootstrap(): void {
   } as unknown as (typeof TranslateWebProto.setDocument)
 
   console.log('[milton-sandbox] zotero/translate runtime loaded; adapters installed + setDocument patched')
+}
+
+/**
+ * AC6 — Bundle integrity check. Runs ONCE at bootstrap, BEFORE any
+ * translate-request handler arms. Hashes every REGISTRY entry's source
+ * bytes via crypto.subtle.digest('SHA-256', ...) and compares against the
+ * build-time pin (translator-bundle-pin.json). UUIDs that pass land in
+ * `verifiedSet`; subsequent getBundledTranslator() calls gate on it.
+ *
+ * If verification fails for some translators, log a warning naming them
+ * but DON'T crash — the lazy CDN-fetch path is the recovery and the
+ * extension stays usable for the translators that did verify.
+ */
+async function bootstrapIntegrity(): Promise<void> {
+  const total = listBundledTranslatorIDs().length
+  const verified = await verifyAllBundleIntegrity()
+  _setVerifiedSet(verified)
+  if (verified.size === total) {
+    console.log(`[milton-sandbox] bundle integrity: ${verified.size}/${total} translators verified`)
+  } else {
+    console.warn(
+      `[milton-sandbox] bundle integrity: ${verified.size}/${total} translators verified — ` +
+        `${total - verified.size} failed (see preceding warnings); ` +
+        `failed translators fall back to lazy CDN-fetch (Task 5)`,
+    )
+  }
 }
 
 /**
@@ -309,11 +340,17 @@ function wireSpikeTrigger(): void {
     async (url: string) => runTranslation({ url, translatorId: ARXIV_TRANSLATOR_ID })
 }
 
-try {
+async function bootstrapAll(): Promise<void> {
   bootstrap()
+  // Integrity verify BEFORE wiring listeners so a translate-request that
+  // arrives during cold-start never sees an unverified-but-callable
+  // getBundledTranslator (it returns null until _setVerifiedSet runs).
+  await bootstrapIntegrity()
   wirePostMessageListener()
   wireSpikeTrigger()
   console.log(`[milton-sandbox] ready (protocol v${PROTOCOL_VERSION})`)
-} catch (err) {
-  console.error('[milton-sandbox] bootstrap failed:', err)
 }
+
+bootstrapAll().catch((err) => {
+  console.error('[milton-sandbox] bootstrap failed:', err)
+})

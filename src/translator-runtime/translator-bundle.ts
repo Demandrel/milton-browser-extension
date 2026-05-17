@@ -15,6 +15,8 @@
 // metadata is cached in-memory for the lifetime of the sandbox page.
 
 import type { BundledTranslator, TranslatorMetadata } from './zotero-types'
+import pin from '../../translator-bundle-pin.json' with { type: 'json' }
+import { bytesToHex } from './manifest-verify'
 
 interface BundleEntry {
   source: string
@@ -184,10 +186,93 @@ function buildIdIndex(): Map<string, string> {
   return idx
 }
 
+// Bundle integrity check (AC6). Verified ONCE at sandbox bootstrap via
+// verifyAllBundleIntegrity(); subsequent getBundledTranslator() calls
+// consult `verifiedSet` for an O(1) gate. Pre-verifying at bootstrap
+// avoids both (a) making getBundledTranslator async — which would force
+// runTranslation through a sync→async refactor — and (b) a race condition
+// where two concurrent first-calls both compute the digest.
+//
+// If bootstrap hasn't run yet (verifiedSet === null), getBundledTranslator
+// returns null defensively — the lazy CDN-fetch path (translator-fetcher.ts
+// in Task 5) takes over. This is the intended graceful-degradation flow.
+let verifiedSet: Set<string> | null = null
+
+/**
+ * Verify every REGISTRY entry's SHA-256 hash against the build-time pin
+ * (translator-bundle-pin.json). Returns the set of translatorIDs that
+ * verified successfully — the caller (sandbox bootstrap) should then call
+ * `_setVerifiedSet(set)` to install it. UUIDs whose source bytes have been
+ * tampered with (or whose hash is simply missing from the pin) are NOT
+ * included in the returned set; subsequent getBundledTranslator(uuid)
+ * calls return null for them, and lazy CDN-fetch is the recovery path.
+ *
+ * Logged on failure with the failing UUID + expected-vs-actual hex hashes
+ * so a tamper signal is visible in DevTools.
+ */
+export async function verifyAllBundleIntegrity(): Promise<Set<string>> {
+  if (idIndex === null) {
+    idIndex = buildIdIndex()
+  }
+  const verified = new Set<string>()
+  const encoder = new TextEncoder()
+  for (const [, key] of [...idIndex.entries()]) {
+    const entry = REGISTRY[key]
+    const parsed = entry.parsed
+    if (parsed === undefined) continue // buildIdIndex always populates parsed; defensive
+    const translatorID = parsed.metadata.translatorID
+    const expectedHex = (pin.bundleHashes as Record<string, string>)[translatorID]
+    if (expectedHex === undefined) {
+      console.warn(
+        `[translator-bundle] no pin entry for ${translatorID} (${parsed.metadata.label}); skipping`,
+      )
+      continue
+    }
+    const digestBuf = await crypto.subtle.digest('SHA-256', encoder.encode(entry.source))
+    const actualHex = bytesToHex(new Uint8Array(digestBuf))
+    if (actualHex !== expectedHex) {
+      console.warn(
+        `[translator-bundle] integrity mismatch for ${translatorID} (${parsed.metadata.label}):\n` +
+          `  expected: ${expectedHex}\n` +
+          `  actual:   ${actualHex}`,
+      )
+      continue
+    }
+    verified.add(translatorID)
+  }
+  return verified
+}
+
+/**
+ * Install the verified set. Called by sandbox.ts bootstrap with the result
+ * of verifyAllBundleIntegrity(). Subsequent getBundledTranslator() calls
+ * then gate on this set. Idempotent — re-calling with a larger set
+ * (additional UUIDs verified) is safe; shrinking the set would surface as
+ * silently-disappearing translators and is intentionally allowed for tests
+ * (via the test seam below).
+ */
+export function _setVerifiedSet(set: Set<string>): void {
+  verifiedSet = set
+}
+
+/**
+ * Test seam: reset the verified set + lazy index. Called by tests that
+ * mutate REGISTRY or want to exercise the unbootstrapped state.
+ */
+export function _resetForTests(): void {
+  verifiedSet = null
+  idIndex = null
+}
+
 export function getBundledTranslator(translatorID: string): BundledTranslator | null {
   if (idIndex === null) {
     idIndex = buildIdIndex()
   }
+  // Gate on the verified set — if bootstrap hasn't installed it yet, OR if
+  // this UUID failed integrity verification, return null. Caller's lazy
+  // CDN-fetch path is the recovery.
+  if (verifiedSet === null) return null
+  if (!verifiedSet.has(translatorID)) return null
   const key = idIndex.get(translatorID)
   if (key === undefined) return null
   const entry = REGISTRY[key]
@@ -202,6 +287,7 @@ export function listBundledTranslatorIDs(): string[] {
 }
 
 // Test seam: reset the lazy index (called by tests that mutate REGISTRY).
+// Kept for backward compat with BE-8-4 tests; new tests prefer _resetForTests.
 export function _resetIdIndexForTests(): void {
   idIndex = null
 }
