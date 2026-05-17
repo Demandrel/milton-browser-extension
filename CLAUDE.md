@@ -69,6 +69,16 @@ Codified 2026-05-16 in Milton-saas after an audit found 80 CI runs / 995 minutes
 - No `dev` branch. Feature branches off `main`, merged back to `main` (squash-merge convention from BE-8-3 onward).
 - This repo has NO server / deploy pipeline — `main` is just the source of truth for the sideload-able extension. Distribution is sideload-first per charter v2 Decision 9 (Chrome Web Store packaging is a separate epic).
 
+### Rule 7 — ALWAYS auto-watch CI in background after every push event
+- Codified 2026-05-17 after a real violation on PR #5: I opened the PR and ended the turn with "CI will fire on push" instead of launching the watcher. Pierre escalated. Never again.
+- Every `git push`, `gh pr create`, and `gh pr merge` MUST be immediately followed — in the **same response** — by a background `gh pr checks <PR#> --watch` (or `gh run watch <run-id>` for post-merge main CI). Not "in the next turn", not "if you want me to".
+- Canonical pattern: `Bash(command: "gh pr checks <N> --watch --interval 10 2>&1; echo '---EXIT:'$?'---'; gh pr view <N> --json mergeable,statusCheckRollup --jq ...", run_in_background: true, timeout: 600000)`.
+- Do NOT poll the background bash with `Read` — the harness notifies on completion. Polling burns cache + violates the "you'll be notified" rule.
+- Squash-merge re-fires CI on main; the PR-side check going green does NOT exempt the post-merge main watch. Launch a separate background watcher for that run too.
+- Skip ONLY for docs-only PRs that would hit `paths-ignore` (markdown / `_bmad/` etc.). If uncertain, watch anyway — wasted background bash costs nothing; missing a red CI is expensive.
+- Never end a turn with "let me know if you want me to watch CI" — that phrasing IS the violation pattern.
+- Memory: `[[feedback-monitor-ci-in-background]]` + `[[feedback-monitor-post-merge-ci-on-main]]` for canonical Bash patterns and rationale.
+
 ---
 
 ## Project Context
