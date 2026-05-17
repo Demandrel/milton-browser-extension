@@ -52,6 +52,8 @@ import { installZoteroTranslators, registerTranslator } from './zotero-translato
 import { installZoteroItemSaver, translateWithTimeout, TranslatorTimeoutError } from './zotero-translate'
 import { getBundledTranslator } from './translator-bundle'
 import {
+  ARXIV_TRANSLATOR_ID,
+  isFromExpectedSource,
   isTranslateRequest,
   makeTranslateResponse,
   PROTOCOL_VERSION,
@@ -266,7 +268,14 @@ async function runTranslation(args: RunTranslationArgs): Promise<ZoteroItem[]> {
 }
 
 function wirePostMessageListener(): void {
+  // Translate-requests are accepted ONLY from window.parent. When the sandbox
+  // is embedded as an iframe inside spike-page.html (BE-8-4 spike harness) or
+  // BE-8-6's offscreen document, the parent is the legitimate sender. Direct
+  // top-level navigation to sandbox.html has window.parent === window, which
+  // would also be self-consistent.
+  const allowedSources: ReadonlyArray<Window | null> = [window.parent]
   window.addEventListener('message', async (event: MessageEvent) => {
+    if (!isFromExpectedSource(event, allowedSources)) return
     const msg = event.data
     if (!isTranslateRequest(msg)) return
 
@@ -297,10 +306,7 @@ function wireSpikeTrigger(): void {
   // sandbox `window`; returns the extracted items (or throws). Pierre uses
   // this for the Task 8 G17-1 smoke (AC10 scenarios 3-5).
   ;(window as Window & { miltonRuntimeSpike?: (url: string) => Promise<ZoteroItem[]> }).miltonRuntimeSpike =
-    async (url: string) => {
-      const ARXIV_TRANSLATOR_ID = 'ecddda2e-4fc6-4aea-9f17-ef3b56d7377a'
-      return runTranslation({ url, translatorId: ARXIV_TRANSLATOR_ID })
-    }
+    async (url: string) => runTranslation({ url, translatorId: ARXIV_TRANSLATOR_ID })
 }
 
 try {

@@ -28,9 +28,10 @@ interface ParsedHeader {
 }
 
 function parseTranslatorHeader(source: string): ParsedHeader {
-  // Header is the first balanced `{ ... }` block. Skip leading whitespace
-  // and `//` line comments (the vendoring header we prepend at Task 6).
-  // Find via brace counting; string literals may contain escaped braces.
+  // Header is the first balanced `{ ... }` block. Skip leading whitespace,
+  // `//` line comments, and `/* ... */` block comments (the vendoring header
+  // we prepend at Task 6, plus any upstream-style leading prologue).
+  // Find via brace counting; string literals (",  ', `) may contain braces.
   let i = 0
   while (i < source.length) {
     const c = source[i]
@@ -42,6 +43,12 @@ function parseTranslatorHeader(source: string): ParsedHeader {
       while (i < source.length && source[i] !== '\n') i++
       continue
     }
+    if (c === '/' && source[i + 1] === '*') {
+      i += 2
+      while (i < source.length && !(source[i] === '*' && source[i + 1] === '/')) i++
+      i += 2 // skip closing */
+      continue
+    }
     break
   }
   if (source[i] !== '{') {
@@ -51,10 +58,14 @@ function parseTranslatorHeader(source: string): ParsedHeader {
   let end = -1
   for (let j = i; j < source.length; j++) {
     const c = source[j]
-    if (c === '"') {
-      // Skip string literal
+    if (c === '"' || c === "'" || c === '`') {
+      // Skip string / template literal. We don't attempt to handle template
+      // interpolations (`${ ... }`) — Zotero translator metadata blocks are
+      // strict JSON so they don't contain them; if a future translator does,
+      // this parser would need to be replaced with a real JS tokenizer.
+      const quote = c
       j++
-      while (j < source.length && source[j] !== '"') {
+      while (j < source.length && source[j] !== quote) {
         if (source[j] === '\\') j++
         j++
       }

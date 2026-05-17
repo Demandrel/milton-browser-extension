@@ -16,15 +16,16 @@
 // page.
 
 import {
+  ARXIV_TRANSLATOR_ID,
   generateRequestId,
   isFetchProxyRequest,
+  isFromExpectedSource,
   isTranslateResponse,
   makeTranslateRequest,
   PROTOCOL_VERSION,
 } from './host-bridge'
 import type { FetchProxyResponse, ZoteroItem } from './zotero-types'
 
-const ARXIV_TRANSLATOR_ID = 'ecddda2e-4fc6-4aea-9f17-ef3b56d7377a'
 const SPIKE_TIMEOUT_MS = 30_000
 
 function getSandboxWindow(): Window {
@@ -35,7 +36,7 @@ function getSandboxWindow(): Window {
   return iframe.contentWindow
 }
 
-function waitForResponse(requestId: string): Promise<ZoteroItem[]> {
+function waitForResponse(requestId: string, sandboxWindow: Window): Promise<ZoteroItem[]> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       window.removeEventListener('message', handler)
@@ -43,6 +44,8 @@ function waitForResponse(requestId: string): Promise<ZoteroItem[]> {
     }, SPIKE_TIMEOUT_MS)
 
     const handler = (event: MessageEvent): void => {
+      // Replies are only legitimate from the sandbox iframe we asked.
+      if (!isFromExpectedSource(event, [sandboxWindow])) return
       if (!isTranslateResponse(event.data)) return
       if (event.data.requestId !== requestId) return
       clearTimeout(timer)
@@ -79,8 +82,9 @@ async function spike(url: string): Promise<ZoteroItem[]> {
   // but iframe contentWindow may not have run scripts yet on initial nav).
   // Tiny retry: if first postMessage doesn't elicit a reply within a few
   // hundred ms we'll have already failed the response promise's timeout.
-  const responsePromise = waitForResponse(requestId)
-  getSandboxWindow().postMessage(msg, '*')
+  const sandboxWindow = getSandboxWindow()
+  const responsePromise = waitForResponse(requestId, sandboxWindow)
+  sandboxWindow.postMessage(msg, '*')
   return await responsePromise
 }
 
@@ -98,7 +102,13 @@ function serializeHeaders(headers: Headers): string {
   return lines.join('\r\n')
 }
 
+// fetch-proxy requests are only legitimate from the sandbox iframe we host.
+// Compute the allowed window lazily inside the listener so it's resolved
+// after the iframe loads.
 window.addEventListener('message', async (event: MessageEvent) => {
+  const iframe = document.getElementById('sandbox') as HTMLIFrameElement | null
+  const allowedSources: ReadonlyArray<Window | null> = [iframe?.contentWindow ?? null]
+  if (!isFromExpectedSource(event, allowedSources)) return
   if (!isFetchProxyRequest(event.data)) return
   const req = event.data
   const source = event.source as Window | null
