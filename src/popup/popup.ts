@@ -708,7 +708,9 @@ function render(): void {
   // the popup console. Rendered AFTER state markup so it doesn't disrupt
   // existing layout; conditional on import.meta.env.DEV (stripped from prod).
   const renderDebugStripe = (): void => {
-    if (!import.meta.env.DEV) return
+    // BE-8-7 debugging: always-on during this branch so the prod `pnpm build`
+    // sideload also shows the stripe. TODO: gate on import.meta.env.DEV
+    // before merge (or remove entirely once Flow A failure mode is fixed).
     const parts: string[] = [`mode=${pdfAttachmentMode}`]
     if (lastFlowAOutcome !== null) parts.push(`flowA=${lastFlowAOutcome}`)
     if (pendingPdfBytes !== null) parts.push(`bytes=${pendingPdfBytes.byteLength}`)
