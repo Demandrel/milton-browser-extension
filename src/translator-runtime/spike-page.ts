@@ -21,9 +21,12 @@ import {
   isFetchProxyRequest,
   isFromExpectedSource,
   isTranslateResponse,
+  isTranslatorLoadRequest,
   makeTranslateRequest,
+  makeTranslatorLoadResponse,
   PROTOCOL_VERSION,
 } from './host-bridge'
+import { fetchTranslatorFromCdn, TranslatorFetcherError } from './translator-fetcher'
 import type { FetchProxyResponse, ZoteroItem } from './zotero-types'
 
 const SPIKE_TIMEOUT_MS = 30_000
@@ -143,6 +146,47 @@ window.addEventListener('message', async (event: MessageEvent) => {
         message: err instanceof Error ? err.message : String(err),
       },
     }
+    source.postMessage(reply, { targetOrigin: '*' })
+  }
+})
+
+// SPIKE-ONLY: BE-8-6 supersedes (production handler moves to popup/SW context).
+// translator-load-request handler — sandbox iframe posts this when
+// getBundledTranslator() returns null (verifiedSet miss, i.e. translator
+// is not in the curated bundle). We hit the translator-fetcher (which
+// does Ed25519 sig verify + per-translator sha256 verify against the live
+// manifest at translators.milton.so/repo) and reply with the verified
+// translator bytes via translator-load-response.
+//
+// Listening on the same window-message bus as the fetch-proxy handler
+// above. isFromExpectedSource gating identical pattern (BE-8-4 H2 hardening).
+window.addEventListener('message', async (event: MessageEvent) => {
+  const iframe = document.getElementById('sandbox') as HTMLIFrameElement | null
+  const allowedSources: ReadonlyArray<Window | null> = [iframe?.contentWindow ?? null]
+  if (!isFromExpectedSource(event, allowedSources)) return
+  if (!isTranslatorLoadRequest(event.data)) return
+  const req = event.data
+  const source = event.source as Window | null
+  if (source === null) return
+  try {
+    const translator = await fetchTranslatorFromCdn(req.translatorId)
+    if (translator === null) {
+      // UUID genuinely absent from the manifest (long-tail miss).
+      const reply = makeTranslatorLoadResponse({
+        requestId: req.requestId,
+        error: { code: 'NOT_IN_MANIFEST', message: `translator ${req.translatorId} not in mirror manifest` },
+      })
+      source.postMessage(reply, { targetOrigin: '*' })
+      return
+    }
+    const reply = makeTranslatorLoadResponse({ requestId: req.requestId, translator })
+    source.postMessage(reply, { targetOrigin: '*' })
+  } catch (err) {
+    const code = err instanceof TranslatorFetcherError ? err.code : 'UNKNOWN'
+    const reply = makeTranslatorLoadResponse({
+      requestId: req.requestId,
+      error: { code, message: err instanceof Error ? err.message : String(err) },
+    })
     source.postMessage(reply, { targetOrigin: '*' })
   }
 })

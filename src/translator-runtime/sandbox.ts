@@ -63,6 +63,7 @@ import {
   makeTranslateResponse,
   PROTOCOL_VERSION,
 } from './host-bridge'
+import { loadTranslatorFromParent } from './sandbox-fallback'
 import type { ZoteroGlobal, ZoteroItem } from './zotero-types'
 
 const FRAMEWORK_SOURCES: ReadonlyArray<[string, string]> = [
@@ -244,9 +245,15 @@ interface RunTranslationArgs {
 async function runTranslation(args: RunTranslationArgs): Promise<ZoteroItem[]> {
   console.log('[milton-sandbox] runTranslation start', { url: args.url, translatorId: args.translatorId, hasHtml: args.html !== undefined })
   const Zotero = getZotero()
-  const bundled = getBundledTranslator(args.translatorId)
+  let bundled = getBundledTranslator(args.translatorId)
   if (bundled === null) {
-    throw new Error(`Translator ${args.translatorId} not in bundle`)
+    console.log('[milton-sandbox] translator not in bundle; falling back to lazy CDN-fetch via parent')
+    bundled = await loadTranslatorFromParent({
+      postTarget: window.parent,
+      listenerHost: window,
+      translatorId: args.translatorId,
+    })
+    console.log('[milton-sandbox] lazy-loaded translator from parent', bundled.metadata.label)
   }
   registerTranslator(bundled)
   console.log('[milton-sandbox] translator registered', bundled.metadata.label)
