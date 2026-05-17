@@ -160,6 +160,32 @@ AGPL was chosen so the extension can import the `zotero/translate` runtime (AGPL
 
 - **Translator-mirror CDN** (BE-8-1, sprint 2) — Milton-hosted mirror of `zotero/translators` (served at `https://translators.milton.so/repo/`) consumed by the BE-8-5 curated-bundle build pipeline and the runtime long-tail lazy-fetch path. Runbook lives in [Milton-saas](https://github.com/Demandrel/Milton-saas) (private) at `tools/translator-mirror/README.md` — visible to Demandrel members at https://github.com/Demandrel/Milton-saas/tree/main/tools/translator-mirror.
 
+## Bundled translators (BE-8-5)
+
+The extension ships ~26 curated translators bundled into the `.crx` for instant capture on the publishers Pierre actually reads. Translators outside the bundle are lazily fetched from the mirror CDN at use-time — same trust chain, slightly slower first capture.
+
+**Trust chain (matches BE-8-1 AC8 — two-layer verification):**
+
+1. The mirror at `https://translators.milton.so/repo/metadata` is signed with Ed25519. The public key is committed in [`src/translator-runtime/manifest-signing-pubkey.ts`](src/translator-runtime/manifest-signing-pubkey.ts); the private half lives in operator custody in Milton-saas.
+2. The signed manifest contains a SHA-256 for every translator. Per-translator bytes are verified against this hash on every fetch (build-time AND runtime).
+
+Failure modes are loud, never silent: any signature verification or hash mismatch aborts the operation with a typed-code error.
+
+**Source of bundled bytes:** [`zotero/translators`](https://github.com/zotero/translators) (AGPL-3.0-or-later), mirrored byte-for-byte. Each vendored file under `src/translator-runtime/translators/` preserves the upstream `BEGIN LICENSE BLOCK ... END LICENSE BLOCK` header verbatim. AGPL §6 source-availability is satisfied by (a) this repo's `COPYING`, (b) the upstream `zotero/translators` URL, and (c) the live mirror serving the source bytes.
+
+**Current pin:** see [`translator-bundle-pin.json`](translator-bundle-pin.json) — `upstreamCommit` field records the `zotero/translators` master HEAD that the bundled bytes were fetched from. Refresh the bundle (and pin) by editing [`src/translator-runtime/curated-translators.txt`](src/translator-runtime/curated-translators.txt) (one UUID per line, `#` comments allowed) and running:
+
+```bash
+pnpm refresh:translators
+```
+
+The script is idempotent — re-running with the same curated list + same upstream manifest produces byte-identical output. Failures (signature invalid, hash mismatch, slug collision, etc.) abort the script and leave nothing partially written.
+
+**Build-time pin vs runtime pin:**
+
+- **Bundled subset** is pinned at build (`translator-bundle-pin.json#upstreamCommit`) per Charter v2 Decision 6 — reproducible builds; the bytes in your `.crx` always come from one specific upstream commit, verified at bootstrap (`verifyAllBundleIntegrity`) on every sandbox load.
+- **Long-tail lazy fetch** verifies against the CURRENT manifest's signature + sha256, NOT the build-time pin — long-tail tracks the live mirror so a newly-added Zotero translator is reachable without re-bundling the extension. Bundled and lazy paths are mutually exclusive (if a UUID is in the bundle + verifies, lazy-fetch is skipped).
+
 ## Tech stack
 
 - Vite ^7.3 + `@crxjs/vite-plugin` ^2.4 + TypeScript ^5.9 (Manifest V3)
@@ -205,9 +231,9 @@ pnpm test                         # vitest run
 |---|---|---|
 | BE-8-1 | Translator-mirror CDN setup (Coolify + Traefik + manifest signing) | shipped |
 | BE-8-2 | Connector bytes endpoint (`POST /references/{id}/pdf-bytes`) | shipped (Milton-saas-side) |
-| BE-8-3 | Extension extracted to public AGPL repo (this repo) | in progress |
-| BE-8-4 | Translator runtime lift (`zotero/translate` as submodule) | backlog |
-| BE-8-5 | Curated translator bundle + lazy CDN-fetch | backlog |
+| BE-8-3 | Extension extracted to public AGPL repo (this repo) | shipped |
+| BE-8-4 | Translator runtime lift (`zotero/translate` as submodule) | shipped |
+| BE-8-5 | Curated translator bundle + lazy CDN-fetch | in progress |
 | BE-8-6 | Class 3 capture flow (translator in page context) | backlog |
 | BE-8-7 | Class 2 capture (client-side PDF fetch with session) + paste-failure UX | backlog |
 | BE-8-8 | LLM-fallback in Milton-desktop | backlog |

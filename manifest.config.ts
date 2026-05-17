@@ -27,6 +27,12 @@ export default defineManifest({
   permissions: ['activeTab'],
   host_permissions: [
     'https://translate.milton.so/*',
+    // BE-8-5 — extension fetches the manifest + per-translator code from the
+    // translator-mirror CDN (Ed25519 + SHA-256 verified). Required for both
+    // (a) the lazy long-tail fetch path (translator-fetcher.ts; popup/SW),
+    // and (b) the SPIKE-ONLY spike-page.ts handler that delegates the
+    // sandbox's lazy-load to this fetch.
+    'https://translators.milton.so/*',
     // BE-8-4 spike target — extension fetches arXiv abs HTML for translator execution.
     'https://arxiv.org/*',
     'https://export.arxiv.org/*',
