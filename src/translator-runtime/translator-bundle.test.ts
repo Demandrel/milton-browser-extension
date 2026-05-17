@@ -10,10 +10,14 @@ import { getBundledTranslator, listBundledTranslatorIDs } from './translator-bun
 const ARXIV_ID = 'ecddda2e-4fc6-4aea-9f17-ef3b56d7377a'
 
 describe('translator-bundle', () => {
-  it('lists arXiv as the only bundled translator (BE-8-4)', () => {
+  it('lists arXiv among the bundled translators (BE-8-5 — curated bundle of ~26 translators)', () => {
     const ids = listBundledTranslatorIDs()
     expect(ids).toContain(ARXIV_ID)
-    expect(ids).toHaveLength(1)
+    // BE-8-5 expanded the bundle from 1 (BE-8-4 spike) to ~26 curated entries.
+    // Lower bound guards against accidental empty-bundle regressions; upper
+    // bound is the AC2 + SANITY_MAX (200) ceiling enforced by refresh script.
+    expect(ids.length).toBeGreaterThanOrEqual(20)
+    expect(ids.length).toBeLessThanOrEqual(200)
   })
 
   it('getBundledTranslator returns the arXiv translator with parsed metadata', () => {

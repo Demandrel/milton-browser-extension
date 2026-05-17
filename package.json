@@ -18,7 +18,8 @@
     "dev": "vite",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "refresh:translators": "tsx scripts/refresh-translator-bundle.ts"
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.4.0",
