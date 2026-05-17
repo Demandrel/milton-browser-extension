@@ -586,16 +586,7 @@ function render(): void {
       break
 
     case 'posting':
-      // BE-8-6 smoke S4 debug: render the payload directly in the popup UI
-      // so Pierre can read it WITHOUT opening extension DevTools (which
-      // closes the popup the moment it's opened — see prior turn). Remove
-      // once we know whether type=website is being sent or not.
-      root.innerHTML = `
-        <p class="milton-popup-loading">Saving to Milton…</p>
-        <pre style="font-size:10px;background:#f4f4f4;padding:8px;border-radius:4px;overflow:auto;max-height:300px;white-space:pre-wrap;word-break:break-word">${escapeHtml(
-          JSON.stringify(state.payload, null, 2),
-        )}</pre>
-      `
+      root.innerHTML = `<p class="milton-popup-loading">Saving to Milton…</p>`
       break
 
     case 'success':
@@ -1614,16 +1605,17 @@ async function save(): Promise<void> {
     state.metadataSource === 'server-translate',
   )
 
-  // BE-8-6 smoke S4 debug: surface the exact payload going to the connector
-  // so we can distinguish "heuristic didn't fire" from "connector mapped
-  // type=website → article on its side". Remove once Pierre confirms which.
-  console.log('[milton-popup] saving payload', {
-    metadataSource: state.metadataSource,
-    type: payload.type,
-    year: payload.year,
-    title: payload.title,
-    url: payload.url,
-  })
+  // BE-8-6 smoke S4 debug: localhost connector replies in <50ms so the
+  // posting state flashes too fast to read. Use a blocking alert() that
+  // Pierre can read + dismiss. Remove on the next commit once we know
+  // which side the type=article bug is on.
+  alert(
+    `[milton-popup S4 DEBUG]\n\nmetadataSource: ${state.metadataSource}\n\nPayload to POST:\n${JSON.stringify(
+      { type: payload.type, year: payload.year, title: payload.title, url: payload.url },
+      null,
+      2,
+    )}`,
+  )
 
   setState({ kind: 'posting', payload })
   const result = await createReference(payload)
