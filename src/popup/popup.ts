@@ -4,7 +4,7 @@
 // This file is part of milton-browser-extension.
 // See COPYING for license terms.
 
-import { createReference, health, listSelectors } from '../lib/connector-client'
+import { attachPdfBytes, createReference, health, listSelectors } from '../lib/connector-client'
 import { mapMetadataToPayload } from '../lib/metadata-to-payload'
 import {
   OffscreenClientError,
@@ -13,8 +13,13 @@ import {
   requestClientTranslation,
 } from '../lib/offscreen-client'
 import { scrapeActiveTabHtml, PageContextError } from '../lib/page-context'
+import {
+  PdfFetchInTabError,
+  fetchPdfBytesInTab,
+} from '../lib/pdf-fetch-in-tab'
 import { extractMetadata } from '../lib/translation-client'
 import {
+  extractPdfAttachmentUrl,
   mapZoteroItemToPayload,
   type ZoteroItemForMapping,
 } from '../lib/zotero-item-to-payload'
@@ -146,7 +151,13 @@ type State =
   | { kind: 'translator-fallback'; reason: TranslatorFallbackReason }
   | PreviewState
   | { kind: 'posting'; payload: ConnectorReferencePayload }
-  | { kind: 'success'; id: string }
+  // BE-8-7: `success.pdfAttached` is true when a PDF was uploaded successfully
+  // via the BE-8-2 endpoint (Flow A or Flow B). Drives a small PDF icon on the
+  // success screen. false / undefined = no icon (no PDF, or attach failed —
+  // both surface identically per Pierre's "import silently; user sees in
+  // Milton" UX direction). Soft-degrade is preserved: the reference is saved
+  // regardless of attach outcome.
+  | { kind: 'success'; id: string; pdfAttached?: boolean }
   | { kind: 'signed-out' }
   | { kind: 'error-no-metadata' }
   | { kind: 'error-too-large' }
@@ -166,7 +177,28 @@ type TranslatorFallbackReason =
   | 'no-items'
   | 'html-scrape-failed'
 
+// BE-8-7: which Class 2 path the popup is on for the post-create attach.
+// 'flow-a' — Flow A bytes staged at boot (direct-PDF tab).
+// 'flow-b' — Flow B URL staged at translator-done (article landing page).
+// 'be-7-fallback' — Flow A's client-fetch failed; revert to BE-7 pdfUrl.
+// 'none' — no PDF to attach.
+type PdfAttachmentMode = 'flow-a' | 'flow-b' | 'be-7-fallback' | 'none'
+
 const TRANSLATOR_DONE_FLASH_MS = 800
+// BE-8-7: Class 2 PDF fetch + upload timeouts. PDF fetch (in-tab chrome.
+// scripting): 45s covers 50 MiB over slow WiFi. Upload to BE-8-2: 90s = 60s
+// server-side TimeoutLayer + 30s client headroom.
+const PDF_FETCH_TIMEOUT_MS = 45_000
+const PDF_UPLOAD_TIMEOUT_MS = 90_000
+// BE-8-7: dual-tone PDF document icon for the success state when bytes were
+// attached. Inline SVG (no icon lib in this repo); two `currentColor` fills
+// at different opacities give the dual-tone effect and inherit the popup's
+// success-text color automatically. Sized via `.milton-popup-pdf-icon` CSS.
+const PDF_ICON_SVG =
+  '<svg class="milton-popup-pdf-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">' +
+  '<path fill="currentColor" opacity="0.35" d="M3.5 1.5h5.5L13 5.5V14a.5.5 0 0 1-.5.5h-9A.5.5 0 0 1 3 14V2a.5.5 0 0 1 .5-.5z"/>' +
+  '<path fill="currentColor" d="M9 1.5 13 5.5h-3.5A.5.5 0 0 1 9 5z"/>' +
+  '</svg>'
 
 const root = document.getElementById('root') as HTMLDivElement
 let state: State = { kind: 'loading-tab' }
@@ -191,9 +223,38 @@ let currentTabId: number | undefined
 let translatorAbort: AbortController | null = null
 let translatorRequestId: string | null = null
 
+// ── BE-8-7: Class 2 PDF-attach module state ───────────────────────────────
+//
+// `pendingPdfBytes` is staged at Flow A boot (direct-PDF tab); read at Save
+// time and POSTed via attachPdfBytes. DO NOT TRANSFER (see AC7 BT1):
+// transferring detaches the buffer; subsequent .byteLength returns 0; the
+// POST hits BE-8-2 with an empty body → 400. If a future caller needs to
+// inspect the buffer (e.g., content hash), use bytes.slice() for a defensive
+// copy BEFORE the staging point.
+let pendingPdfBytes: ArrayBuffer | null = null
+// `pendingPdfAttachmentUrl` is staged at Flow B's translator-done (the first
+// PDF attachment URL from the ZoteroItem); read at Save time, then the popup
+// fetches the bytes in-tab + uploads.
+let pendingPdfAttachmentUrl: string | null = null
+// Which Class 2 path the popup is on. Drives post-create Save branching.
+let pdfAttachmentMode: PdfAttachmentMode = 'none'
+// AbortController for the in-flight bytes upload. Popup `beforeunload` aborts
+// it; the XHR/fetch wrapper translates the abort into a 'network-error' /
+// 'timeout' result that the success branch surfaces as pdfAttached: 'failed'.
+let pdfUploadAbort: AbortController | null = null
+
 void boot()
 
 async function boot() {
+  // BE-8-7: reset Class 2 module state on every boot() entry. Prevents state
+  // leakage between popup re-opens on different tabs (e.g., user closes the
+  // popup mid-flow, opens it on a new URL — the prior pendingPdfBytes /
+  // pendingPdfAttachmentUrl must NOT survive).
+  pendingPdfBytes = null
+  pendingPdfAttachmentUrl = null
+  pdfAttachmentMode = 'none'
+  pdfUploadAbort = null
+
   // AC2 — read current tab URL + id (BE-8-6 needs tabId for chrome.scripting).
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true })
   const url = tabs[0]?.url
@@ -243,7 +304,12 @@ async function boot() {
   const route = decideBootRoute({ url, mimeType: currentTabMimeType, candidateIds })
   switch (route.kind) {
     case 'pdf-server':
-      enterServerFlow(url!)
+      // BE-8-7 Flow A: try client-fetch FIRST inside the active tab's
+      // content-script context (session cookies travel). On success, stage
+      // bytes + enter the server-translate metadata flow; the Save handler
+      // uploads via attachPdfBytes after createReference returns 201. On
+      // failure, fall back to BE-7's pdfUrl pass-through path.
+      await tryFlowAClientPdfFetch(url!)
       return
     case 'no-candidates-server':
       console.log('[milton-popup] translator-fallback reason=no-match')
@@ -257,6 +323,38 @@ async function boot() {
       setState({ kind: 'cannot-capture', reason: route.reason })
       return
   }
+}
+
+/**
+ * BE-8-7 Flow A: direct-PDF tab. Silently attempt client-fetch inside the
+ * active tab's content-script context — no user-visible state transition.
+ * Per Pierre's UX direction: "we just import it and the user will see it
+ * in Milton". Popup stays on the loading-health spinner (already showing)
+ * during the fetch. On success → stage bytes + enter the server-translate
+ * metadata flow. On failure → log + fall back to BE-7's pdfUrl path; the
+ * connector fetches server-side as before. The user sees one fluid
+ * "Checking Milton…" then the preview, with no Flow-A-specific UI.
+ */
+async function tryFlowAClientPdfFetch(url: string): Promise<void> {
+  if (currentTabId === undefined) {
+    console.warn('[milton-popup] no tabId for Flow A; falling back to BE-7')
+    pdfAttachmentMode = 'be-7-fallback'
+    enterServerFlow(url)
+    return
+  }
+  try {
+    const result = await fetchPdfBytesInTab(currentTabId, url, {
+      timeoutMs: PDF_FETCH_TIMEOUT_MS,
+    })
+    pendingPdfBytes = result.bytes
+    pdfAttachmentMode = 'flow-a'
+  } catch (err) {
+    const code = err instanceof PdfFetchInTabError ? err.code : 'UNKNOWN'
+    console.log(`[milton-popup] pdf-class2-fallback reason=${code}`)
+    pendingPdfBytes = null
+    pdfAttachmentMode = 'be-7-fallback'
+  }
+  enterServerFlow(url)
 }
 
 /**
@@ -404,6 +502,15 @@ async function tryClientTranslator(url: string, candidateIds: string[]): Promise
     return
   }
 
+  // BE-8-7 Flow B: stage the first PDF attachment URL (if any). Save handler
+  // will fetch + upload bytes AFTER createReference returns 201. Best-effort:
+  // failure soft-degrades to pdfAttached: 'failed' without undoing the save.
+  const pdfAttachmentUrl = extractPdfAttachmentUrl(items[0] as { attachments?: unknown })
+  if (pdfAttachmentUrl !== null) {
+    pendingPdfAttachmentUrl = pdfAttachmentUrl
+    pdfAttachmentMode = 'flow-b'
+  }
+
   // Translation succeeded — flash translator-done state, then enter preview.
   setState({ kind: 'translator-done', itemCount: items.length, publisherLabel })
   window.setTimeout(() => {
@@ -503,9 +610,13 @@ async function ensureOffscreenSafe(): Promise<void> {
 // before the popup window dies). The offscreen-side 10s timeout is the real
 // abort gate; this is just a hint so the offscreen drops a reply destined
 // for our dead sendResponse channel.
+// BE-8-7: also abort any in-flight bytes upload. AbortController fires
+// fetch/XHR abort; popup wrapper translates to network-error result that
+// would surface as pdfAttached: 'failed' — moot once popup is dead.
 window.addEventListener('beforeunload', () => {
   if (translatorAbort !== null) translatorAbort.abort()
   if (translatorRequestId !== null) cancelClientTranslation(translatorRequestId)
+  if (pdfUploadAbort !== null) pdfUploadAbort.abort()
 })
 
 // BE-8-6: dev-only console hook for driving the full popup → offscreen → sandbox
@@ -531,6 +642,19 @@ if (import.meta.env.DEV) {
 }
 
 function setState(next: State): void {
+  // BE-8-7 BT3: null `pendingPdfBytes` on transition into any terminal error
+  // state. Holding 50 MiB for a terminal-error case while the popup is open
+  // (user reading the error) is a leak; explicit null lets V8 GC promptly.
+  // Symmetric treatment for `pendingPdfAttachmentUrl` (cheaper but tidier).
+  if (
+    next.kind.startsWith('error-') ||
+    next.kind === 'signed-out' ||
+    next.kind === 'cannot-capture' ||
+    next.kind === 'milton-not-running'
+  ) {
+    pendingPdfBytes = null
+    pendingPdfAttachmentUrl = null
+  }
   state = next
   render()
 }
@@ -601,10 +725,16 @@ function render(): void {
       root.innerHTML = `<p class="milton-popup-loading">Saving to Milton…</p>`
       break
 
-    case 'success':
-      root.innerHTML = `<p class="milton-popup-success">Saved to Milton ✓</p>`
+    case 'success': {
+      // BE-8-7: single success message. When pdfAttached === true (Flow A or
+      // Flow B bytes-upload returned 200), prepend a small dual-tone PDF icon.
+      // Inline SVG (no icon lib in this repo); dual-tone via two paths at
+      // currentColor with different opacities — adapts to popup theme.
+      const pdfIcon = state.pdfAttached === true ? PDF_ICON_SVG : ''
+      root.innerHTML = `<p class="milton-popup-success">${pdfIcon}Saved to Milton ✓</p>`
       window.setTimeout(() => window.close(), 1500)
       break
+    }
 
     case 'signed-out':
       root.innerHTML = `
@@ -1603,7 +1733,16 @@ async function save(): Promise<void> {
   // BE-7: when the active tab IS a PDF, pass its URL so Milton's connector can
   // download + attach the binary server-side. Silent best-effort — no popup
   // UI affordance; SSRF validation happens on the connector side (AC9).
-  if (detectPdfPage(currentUrl, currentTabMimeType)) {
+  // BE-8-7 BT5 suppression: when Flow A succeeded and pendingPdfBytes is
+  // staged, we will upload the bytes via attachPdfBytes post-create — do NOT
+  // also set pdfUrl, or the connector's BE-7 `maybe_spawn_direct_fetch` will
+  // race the bytes-upload (one wins; the other emits "already_attached"
+  // noise + wastes a server-side fetch). `pdfUrl` is set ONLY when we are
+  // NOT planning to upload bytes (BE-7 fallback OR non-PDF page).
+  const willUploadBytes =
+    (pdfAttachmentMode === 'flow-a' && pendingPdfBytes !== null) ||
+    (pdfAttachmentMode === 'flow-b' && pendingPdfAttachmentUrl !== null)
+  if (detectPdfPage(currentUrl, currentTabMimeType) && !willUploadBytes) {
     payload.pdfUrl = currentUrl
   }
 
@@ -1619,7 +1758,91 @@ async function save(): Promise<void> {
 
   setState({ kind: 'posting', payload })
   const result = await createReference(payload)
-  dispatchCreateReferenceResult(result)
+  if (!result.ok) {
+    dispatchCreateReferenceResult(result)
+    return
+  }
+  // createReference succeeded. BE-8-7: branch on pdfAttachmentMode.
+  await runPostCreatePdfFlow(result.id)
+}
+
+/**
+ * BE-8-7: post-create PDF-attachment dispatch. Runs AFTER createReference
+ * returns 201; branches on `pdfAttachmentMode`. **Silent** per Pierre's UX
+ * direction: no visible state transitions during fetch/upload. The popup
+ * stays in `posting` ("Saving to Milton…") until the upload resolves, then
+ * transitions straight to `success` — with `pdfAttached: true` (small PDF
+ * icon) when bytes attached, `pdfAttached: false` otherwise. Soft-degrade
+ * is the rule: reference IS saved regardless of attach outcome.
+ */
+async function runPostCreatePdfFlow(referenceId: string): Promise<void> {
+  // 'be-7-fallback' — connector attaches PDF asynchronously via the existing
+  // BE-7 direct-fetch path. From the popup's POV the save is done. We don't
+  // know whether the connector's async fetch will succeed, so omit the icon.
+  if (pdfAttachmentMode === 'be-7-fallback') {
+    setState({ kind: 'success', id: referenceId })
+    return
+  }
+
+  // 'flow-a' — bytes staged at boot; upload directly. Stay in `posting`
+  // visually; transition to success when done.
+  if (pdfAttachmentMode === 'flow-a' && pendingPdfBytes !== null) {
+    const ok = await uploadPdfBytes(referenceId, pendingPdfBytes)
+    pendingPdfBytes = null // BT1/BT3 hygiene — release the 50 MiB ASAP
+    setState({ kind: 'success', id: referenceId, pdfAttached: ok })
+    return
+  }
+
+  // 'flow-b' — fetch the PDF attachment URL in-tab, then upload. Stay in
+  // `posting` visually throughout both phases.
+  if (pdfAttachmentMode === 'flow-b' && pendingPdfAttachmentUrl !== null) {
+    if (currentTabId === undefined) {
+      console.warn('[milton-popup] no tabId for Flow B attach; saved without PDF')
+      setState({ kind: 'success', id: referenceId })
+      return
+    }
+    let bytes: ArrayBuffer
+    try {
+      const result = await fetchPdfBytesInTab(currentTabId, pendingPdfAttachmentUrl, {
+        timeoutMs: PDF_FETCH_TIMEOUT_MS,
+      })
+      bytes = result.bytes
+    } catch (err) {
+      const code = err instanceof PdfFetchInTabError ? err.code : 'UNKNOWN'
+      console.log(`[milton-popup] pdf-class2-fallback reason=${code} mode=flow-b`)
+      setState({ kind: 'success', id: referenceId })
+      return
+    }
+    const ok = await uploadPdfBytes(referenceId, bytes)
+    setState({ kind: 'success', id: referenceId, pdfAttached: ok })
+    return
+  }
+
+  // 'none' — no PDF to attach. Preserve the BE-1/BE-2 success UX (no icon).
+  setState({ kind: 'success', id: referenceId })
+}
+
+/**
+ * BE-8-7: upload PDF bytes via attachPdfBytes. Returns true if bytes were
+ * attached (200 attached or already_attached); false otherwise. Pierre's
+ * UX direction: no per-error distinction at the popup level; 408 timeout +
+ * 400/403/404/413/503 + network-error all collapse to "saved without PDF"
+ * (user sees in Milton). Uses fetch branch (no onProgress) since the
+ * popup no longer renders progress.
+ */
+async function uploadPdfBytes(referenceId: string, bytes: ArrayBuffer): Promise<boolean> {
+  pdfUploadAbort = new AbortController()
+  try {
+    const result = await attachPdfBytes(referenceId, bytes, {
+      timeoutMs: PDF_UPLOAD_TIMEOUT_MS,
+      signal: pdfUploadAbort.signal,
+    })
+    if (result.ok) return true
+    console.warn('[milton-popup] attachPdfBytes failed', result)
+    return false
+  } finally {
+    pdfUploadAbort = null
+  }
 }
 
 // ── Error dispatchers (inherited from BE-4) ────────────────────────────────

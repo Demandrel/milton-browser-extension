@@ -305,6 +305,17 @@ body {
   padding: 28px 0;
 }
 
+/* BE-8-7: small dual-tone PDF icon shown on the success state when bytes
+   were attached (Flow A or Flow B). Inherits color from .milton-popup-success
+   via currentColor; the two paths use different opacities for the dual-tone
+   effect. Sized to sit inline with the success copy. */
+.milton-popup-pdf-icon {
+  width: 14px;
+  height: 14px;
+  vertical-align: -2px;
+  margin-right: 6px;
+}
+
 .milton-popup-loading {
   color: var(--milton-fg-3);
   text-align: center;

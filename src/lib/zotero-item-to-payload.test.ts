@@ -6,6 +6,7 @@
 
 import { describe, expect, it } from 'vitest'
 import {
+  extractPdfAttachmentUrl,
   mapZoteroItemToPayload,
   mapZoteroItemTypeToConnector,
   parseYearFromDateString,
@@ -178,5 +179,103 @@ describe('mapZoteroItemToPayload', () => {
     const item = { itemType: 'audioRecording', title: 't' }
     const payload = mapZoteroItemToPayload(item, 'url')
     expect(payload.type).toBe('other')
+  })
+})
+
+// ── BE-8-7: extractPdfAttachmentUrl ────────────────────────────────────────
+
+describe('extractPdfAttachmentUrl', () => {
+  it('returns the first PDF attachment URL', () => {
+    const item = {
+      attachments: [
+        { url: 'https://x.example/paper.pdf', mimeType: 'application/pdf', title: 'Full Text' },
+      ],
+    }
+    expect(extractPdfAttachmentUrl(item)).toBe('https://x.example/paper.pdf')
+  })
+
+  it('returns the FIRST PDF among multiple PDFs (first-match wins)', () => {
+    const item = {
+      attachments: [
+        { url: 'https://x.example/first.pdf', mimeType: 'application/pdf' },
+        { url: 'https://x.example/second.pdf', mimeType: 'application/pdf' },
+      ],
+    }
+    expect(extractPdfAttachmentUrl(item)).toBe('https://x.example/first.pdf')
+  })
+
+  it('skips HTML attachments to find a PDF further down', () => {
+    const item = {
+      attachments: [
+        { url: 'https://x.example/snapshot.html', mimeType: 'text/html' },
+        { url: 'https://x.example/paper.pdf', mimeType: 'application/pdf' },
+      ],
+    }
+    expect(extractPdfAttachmentUrl(item)).toBe('https://x.example/paper.pdf')
+  })
+
+  it('returns null when attachments is missing', () => {
+    expect(extractPdfAttachmentUrl({})).toBeNull()
+  })
+
+  it('returns null when attachments is empty', () => {
+    expect(extractPdfAttachmentUrl({ attachments: [] })).toBeNull()
+  })
+
+  it('returns null when no attachment has application/pdf mimeType', () => {
+    const item = {
+      attachments: [
+        { url: 'https://x.example/snapshot.html', mimeType: 'text/html' },
+        { url: 'https://x.example/data.json', mimeType: 'application/json' },
+      ],
+    }
+    expect(extractPdfAttachmentUrl(item)).toBeNull()
+  })
+
+  it('matches case-insensitively (APPLICATION/PDF)', () => {
+    const item = {
+      attachments: [{ url: 'https://x.example/paper.pdf', mimeType: 'APPLICATION/PDF' }],
+    }
+    expect(extractPdfAttachmentUrl(item)).toBe('https://x.example/paper.pdf')
+  })
+
+  it('skips attachments missing mimeType (BT10 defensive — does NOT throw)', () => {
+    const item = {
+      attachments: [
+        { url: 'https://x.example/some.file', title: 'Supplementary' }, // no mimeType
+        { url: 'https://x.example/paper.pdf', mimeType: 'application/pdf' },
+      ],
+    }
+    expect(extractPdfAttachmentUrl(item)).toBe('https://x.example/paper.pdf')
+  })
+
+  it('skips attachments missing url', () => {
+    const item = {
+      attachments: [
+        { mimeType: 'application/pdf' }, // no url
+        { url: 'https://x.example/paper.pdf', mimeType: 'application/pdf' },
+      ],
+    }
+    expect(extractPdfAttachmentUrl(item)).toBe('https://x.example/paper.pdf')
+  })
+
+  it('skips attachments with empty-string url', () => {
+    const item = {
+      attachments: [
+        { url: '', mimeType: 'application/pdf' },
+        { url: 'https://x.example/paper.pdf', mimeType: 'application/pdf' },
+      ],
+    }
+    expect(extractPdfAttachmentUrl(item)).toBe('https://x.example/paper.pdf')
+  })
+
+  it('returns null when attachments is not an array (defensive)', () => {
+    const item = { attachments: 'not-an-array' as unknown as unknown[] }
+    expect(extractPdfAttachmentUrl(item)).toBeNull()
+  })
+
+  it('returns null for undefined / null item (defensive)', () => {
+    expect(extractPdfAttachmentUrl(undefined)).toBeNull()
+    expect(extractPdfAttachmentUrl(null)).toBeNull()
   })
 })
