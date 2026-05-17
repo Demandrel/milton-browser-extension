@@ -7,7 +7,13 @@
 // Pure helpers extracted from popup.ts for unit testing.
 // Anything DOM-touching stays in popup.ts; this file is all data/logic.
 
-import type { EditableMetadata, MetadataAuthor, MetadataPrimary, TagSummary } from '../lib/types'
+import type {
+  ConnectorReferencePayload,
+  EditableMetadata,
+  MetadataAuthor,
+  MetadataPrimary,
+  TagSummary,
+} from '../lib/types'
 
 const CURRENT_YEAR = new Date().getFullYear()
 const MIN_YEAR = 1500
@@ -150,6 +156,42 @@ export function blankEditable(title: string): EditableMetadata {
 /** Title must be non-empty (after trim) for the connector to accept the POST. */
 export function isTitleValid(editable: EditableMetadata): boolean {
   return editable.title.trim().length > 0
+}
+
+/**
+ * BE-8-6 smoke S4 follow-up: when the user saves a page that fell all the way
+ * through to the server-fallback flow AND the server returned no academic
+ * signal (no DOI, no year, no journal — typically a plain webpage where
+ * translate.milton.so could only scrape the `<title>`), the saved reference
+ * shouldn't default to `article` with no date. Treat it as a webpage capture
+ * — set `type='website'` + `year=currentYear` so the user's library doesn't
+ * fill with dateless "article" junk when they save random pages.
+ *
+ * Why gated on `isFromServerFallback`: a client-translator that produces
+ * just a title (rare, e.g., a stripped-down translator) is still trying to
+ * extract structured data — overriding its result to `'website'` would be
+ * wrong. The server fallback is the path taken when NO translator matched
+ * the URL at all, which IS the "looks like a generic webpage" signal.
+ *
+ * User edits win: if the user manually types in a DOI or year, this helper
+ * returns the payload unchanged (the no-academic-signal check fails).
+ */
+export function applyGenericWebpageDefaults(
+  payload: ConnectorReferencePayload,
+  editable: EditableMetadata,
+  isFromServerFallback: boolean,
+): ConnectorReferencePayload {
+  const looksGeneric =
+    isFromServerFallback &&
+    editable.doi.length === 0 &&
+    editable.year === 0 &&
+    editable.journal.length === 0
+  if (!looksGeneric) return payload
+  return {
+    ...payload,
+    type: 'website',
+    year: new Date().getFullYear(),
+  }
 }
 
 /**

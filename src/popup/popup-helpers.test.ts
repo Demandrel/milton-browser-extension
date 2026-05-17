@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest'
 import { mapMetadataToPayload } from '../lib/metadata-to-payload'
 import type { EditableMetadata, MetadataAuthor, MetadataPrimary, TagSummary } from '../lib/types'
 import {
+  applyGenericWebpageDefaults,
   blankEditable,
   decideTagInputEnter,
   detectPdfPage,
@@ -20,6 +21,7 @@ import {
   metadataToEditable,
   parseYearInput,
 } from './popup-helpers'
+import type { ConnectorReferencePayload } from '../lib/types'
 
 // ── joinAuthors ────────────────────────────────────────────────────────────
 
@@ -462,6 +464,85 @@ describe('isRestrictedUrl', () => {
   })
   it('accepts http://', () => {
     expect(isRestrictedUrl('http://example.com/x')).toBe(false)
+  })
+})
+
+// ── applyGenericWebpageDefaults (BE-8-6 smoke S4 follow-up) ────────────────
+
+describe('applyGenericWebpageDefaults', () => {
+  const baseEditable: EditableMetadata = {
+    title: 'Example Domain',
+    authors: [],
+    year: 0,
+    doi: '',
+    journal: '',
+    abstract: '',
+    issued_date: '',
+    arxiv_id: '',
+    issn: '',
+    volume: '',
+    issue: '',
+    pages: '',
+  }
+  const basePayload: ConnectorReferencePayload = {
+    title: 'Example Domain',
+    authors: [],
+    tagIds: [],
+    newTagNames: [],
+    projectIds: [],
+    collectionIds: [],
+  }
+  const currentYear = new Date().getFullYear()
+
+  it('overrides to website + current year when server-fallback + no academic signal', () => {
+    const out = applyGenericWebpageDefaults(basePayload, baseEditable, true)
+    expect(out.type).toBe('website')
+    expect(out.year).toBe(currentYear)
+    expect(out.title).toBe('Example Domain')
+  })
+
+  it('does NOT override when called from client-translator path', () => {
+    const out = applyGenericWebpageDefaults(basePayload, baseEditable, false)
+    expect(out).toBe(basePayload) // returned reference unchanged
+    expect(out.type).toBeUndefined()
+    expect(out.year).toBeUndefined()
+  })
+
+  it('does NOT override when user provided a DOI', () => {
+    const out = applyGenericWebpageDefaults(
+      basePayload,
+      { ...baseEditable, doi: '10.1234/x' },
+      true,
+    )
+    expect(out.type).toBeUndefined()
+  })
+
+  it('does NOT override when user provided a year', () => {
+    const out = applyGenericWebpageDefaults(basePayload, { ...baseEditable, year: 2024 }, true)
+    expect(out.type).toBeUndefined()
+  })
+
+  it('does NOT override when user provided a journal', () => {
+    const out = applyGenericWebpageDefaults(
+      basePayload,
+      { ...baseEditable, journal: 'Nature' },
+      true,
+    )
+    expect(out.type).toBeUndefined()
+  })
+
+  it('preserves other payload fields when overriding', () => {
+    const payloadWithTags: ConnectorReferencePayload = {
+      ...basePayload,
+      tagIds: ['t1'],
+      newTagNames: ['new-tag'],
+      url: 'https://example.com',
+    }
+    const out = applyGenericWebpageDefaults(payloadWithTags, baseEditable, true)
+    expect(out.tagIds).toEqual(['t1'])
+    expect(out.newTagNames).toEqual(['new-tag'])
+    expect(out.url).toBe('https://example.com')
+    expect(out.type).toBe('website')
   })
 })
 

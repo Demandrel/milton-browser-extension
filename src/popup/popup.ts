@@ -36,6 +36,7 @@ import { listBundledTranslators } from '../translator-runtime/translator-bundle'
 import { fetchManifest } from '../translator-runtime/translator-fetcher'
 import type { ZoteroItem } from '../translator-runtime/zotero-types'
 import {
+  applyGenericWebpageDefaults,
   blankEditable,
   decideTagInputEnter,
   detectPdfPage,
@@ -1581,7 +1582,7 @@ async function save(): Promise<void> {
   const collectionIds = [...state.selectedCollectionIds]
 
   // Build the payload via the mapper, then assign the four selector arrays.
-  const payload = mapMetadataToPayload(editableToMapperInput(editable), currentUrl)
+  let payload = mapMetadataToPayload(editableToMapperInput(editable), currentUrl)
   payload.tagIds = tagIds
   payload.newTagNames = newTagNames
   payload.projectIds = projectIds
@@ -1593,6 +1594,16 @@ async function save(): Promise<void> {
   if (detectPdfPage(currentUrl, currentTabMimeType)) {
     payload.pdfUrl = currentUrl
   }
+
+  // BE-8-6 smoke S4 follow-up: when the save came from the server-fallback
+  // path AND the metadata has no academic signal (no DOI / no year / no
+  // journal), treat as a webpage capture — `type='website'` + today's year.
+  // User-edited DOI/year/journal disables the override.
+  payload = applyGenericWebpageDefaults(
+    payload,
+    editable,
+    state.metadataSource === 'server-translate',
+  )
 
   setState({ kind: 'posting', payload })
   const result = await createReference(payload)
