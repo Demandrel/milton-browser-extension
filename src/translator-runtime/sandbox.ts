@@ -341,10 +341,16 @@ function wirePostMessageListener(): void {
 
 function wireSpikeTrigger(): void {
   // Dev-internal proof-of-life. Exposes a console-callable function on
-  // sandbox `window`; returns the extracted items (or throws). Pierre uses
-  // this for the Task 8 G17-1 smoke (AC10 scenarios 3-5).
-  ;(window as Window & { miltonRuntimeSpike?: (url: string) => Promise<ZoteroItem[]> }).miltonRuntimeSpike =
-    async (url: string) => runTranslation({ url, translatorId: ARXIV_TRANSLATOR_ID })
+  // sandbox `window`; returns the extracted items (or throws). Used by
+  // Pierre for the BE-8-5 AC16 G17-1 smoke scenarios:
+  //   S1 — bundled hit (default translator id is arXiv): miltonRuntimeSpike(url)
+  //   S2 — lazy-fetch hit (force a UUID NOT in the bundle):
+  //         miltonRuntimeSpike(url, '<uuid-known-in-manifest-not-in-bundle>')
+  //   S3 — unknown URL with bundled translator: still resolves but
+  //         translator.detectWeb returns nothing (handled by zotero-translate)
+  ;(window as Window & { miltonRuntimeSpike?: (url: string, translatorIdOverride?: string) => Promise<ZoteroItem[]> }).miltonRuntimeSpike =
+    async (url: string, translatorIdOverride?: string) =>
+      runTranslation({ url, translatorId: translatorIdOverride ?? ARXIV_TRANSLATOR_ID })
 }
 
 async function bootstrapAll(): Promise<void> {

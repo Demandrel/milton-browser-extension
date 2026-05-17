@@ -63,10 +63,16 @@ function waitForResponse(requestId: string, sandboxWindow: Window): Promise<Zote
   })
 }
 
-async function spike(url: string): Promise<ZoteroItem[]> {
+async function spike(url: string, translatorIdOverride?: string): Promise<ZoteroItem[]> {
   // Pre-fetch the target HTML from extension origin — manifest's
   // host_permissions cover arxiv.org / export.arxiv.org, so CORS is not
-  // an obstacle here (unlike the sandbox, which is opaque-origin).
+  // an obstacle here (unlike the sandbox, which is opaque-origin). For
+  // BE-8-5 S2 smoke targeting a publisher OUTSIDE the manifest
+  // host_permissions, the pre-fetch will fail with CORS — Pierre can
+  // either (a) add the publisher's origin to manifest.config.ts
+  // host_permissions temporarily, or (b) drive the sandbox directly via
+  // the sandbox-side miltonRuntimeSpike (which uses fetch-proxy through
+  // this page).
   const resp = await fetch(url, { credentials: 'omit' })
   if (!resp.ok) {
     throw new Error(`Pre-fetch of ${url} failed: HTTP ${resp.status}`)
@@ -77,7 +83,7 @@ async function spike(url: string): Promise<ZoteroItem[]> {
   const msg = makeTranslateRequest({
     requestId,
     url,
-    translatorId: ARXIV_TRANSLATOR_ID,
+    translatorId: translatorIdOverride ?? ARXIV_TRANSLATOR_ID,
     html,
   })
 

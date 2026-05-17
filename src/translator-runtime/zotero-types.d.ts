@@ -12,7 +12,10 @@
 declare global {
   interface Window {
     Zotero?: ZoteroGlobal
-    miltonRuntimeSpike?: (url: string) => Promise<unknown>
+    // BE-8-5 widened the signature: optional translatorIdOverride lets
+    // Pierre force a UUID NOT in the curated bundle for the lazy-fetch
+    // smoke (AC16 S2). Default is arXiv (BE-8-4 spike target).
+    miltonRuntimeSpike?: (url: string, translatorIdOverride?: string) => Promise<unknown>
   }
 }
 

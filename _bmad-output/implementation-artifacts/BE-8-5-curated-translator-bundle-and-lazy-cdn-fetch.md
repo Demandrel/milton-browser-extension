@@ -268,41 +268,147 @@ Commit message style: imperative present, `feat(BE-8-N): ...` / `chore(BE-8-N): 
 
 ## Pre-Review Self-Check
 
-- [ ] Icon variants verified against Figma (fill → solid/duo-solid, stroke → stroke/duo-stroke) — **N/A: no UI in this story**
-- [ ] File list in story matches actual files changed
-- [ ] No raw hex color values — all colors use PandaCSS tokens — **N/A: no UI/CSS**
-- [ ] `$effect` dependencies checked against async boundaries (no split reactive state across `await`) — **N/A: no Svelte runes here**
-- [ ] Superforms tests use real adapter (not mocked) — **N/A: no Superforms**
-- [ ] Barrel imports only — no direct imports from `features/*/utils/` — **N/A: extension doesn't use the features/ layout**
-- [ ] No type casts (`as any`, `as unknown as T`) in new production code — test mocks excepted per team agreement
-- [ ] Error paths handled — all async operations have try/catch or .catch()
-- [ ] IPC command results checked for error states before use — **adapt: postMessage results checked for `error` envelope before use**
-- [ ] Loading states span full async lifecycle (set before await, cleared in finally) — **N/A: no popup loading state in BE-8-5; BE-8-6 territory**
+- [x] Icon variants verified against Figma (fill → solid/duo-solid, stroke → stroke/duo-stroke) — **N/A: no UI in this story**
+- [x] File list in story matches actual files changed — see File List section below
+- [x] No raw hex color values — all colors use PandaCSS tokens — **N/A: no UI/CSS**
+- [x] `$effect` dependencies checked against async boundaries (no split reactive state across `await`) — **N/A: no Svelte runes here**
+- [x] Superforms tests use real adapter (not mocked) — **N/A: no Superforms**
+- [x] Barrel imports only — no direct imports from `features/*/utils/` — **N/A: extension doesn't use the features/ layout**
+- [x] No type casts (`as any`, `as unknown as T`) in new production code — test mocks excepted per team agreement. The one `as BufferSource` cast in `translator-fetcher.ts:sha256Hex` is a TS 5.9 strict-typing workaround for `crypto.subtle.digest(...)` accepting Uint8Array at runtime; documented inline. No `as any` anywhere.
+- [x] Error paths handled — all async operations have try/catch or .catch(); `TranslatorFetcherError` taxonomy covers every fetch failure (NETWORK_ERROR / CDN_4XX / CDN_5XX / SIGNATURE_INVALID / HASH_MISMATCH / MANIFEST_MALFORMED / NOT_IN_MANIFEST / STORAGE_UNAVAILABLE); `TranslatorLoadTimeoutError` + `TranslatorUnavailableError` cover the sandbox fallback.
+- [x] IPC command results checked for error states before use — **adapt: postMessage results checked for `error` envelope before use**. `loadTranslatorFromParent` rejects with `TranslatorUnavailableError` on error envelope; `spike-page.ts` translator-load handler catches every throw + replies with typed error envelope.
+- [x] Loading states span full async lifecycle (set before await, cleared in finally) — **N/A: no popup loading state in BE-8-5; BE-8-6 territory**
 
 ### BE-8-5-specific Pre-Review additions (AC14)
 
-- [ ] Curated UUID list at `src/translator-runtime/curated-translators.txt` reviewed by Pierre (Task 1.3)
-- [ ] `pnpm refresh:translators` is idempotent — run twice, `git status` clean after second (Task 9.7)
-- [ ] Sandbox-chunk gzipped size delta documented vs BE-8-4 baseline (235 kB) in Completion Notes (Task 9.1)
-- [ ] All postMessage listeners added by BE-8-5 use `isFromExpectedSource()` gating — grep for `addEventListener('message'` in changed files; every match has the gate (BE-8-4 H2 lesson)
-- [ ] `host_permissions` only adds `https://translators.milton.so/*` — no broader wildcards crept in
-- [ ] `grep -rE "(milton/src-tauri|@milton-saas|src-tauri/)" src` returns zero hits (IPC boundary; AC18)
-- [ ] AGPL §6 footer / README section drafted; `translator-bundle-pin.json` cites `upstreamCommit` (AC13)
-- [ ] BE-8-4 arXiv spike (S1) still works after BE-8-5 changes (AC17 regression)
-- [ ] CI green via background `gh run watch <id>` post-push (CLAUDE.md Rule 7)
-- [ ] DO NOT flip sprint-status to `done` — code-review gate first ([[feedback-code-review-required-before-done]])
+- [x] Curated UUID list at `src/translator-runtime/curated-translators.txt` reviewed by Pierre (Task 1.3) — Pierre approved verbatim via `/bmad_bmm_dev-story` AskUserQuestion, 2026-05-17
+- [x] `pnpm refresh:translators` is idempotent — run THREE times, `git status` clean after each (Task 9.7); deterministic JSON + sorted bundleHashes + sorted ?raw imports + stable slug derivation = byte-identical re-output
+- [x] Sandbox-chunk gzipped size delta documented vs BE-8-4 baseline (235 kB) in Completion Notes — see below (441.82 kB gzipped; +207 kB delta for 25× more translators + ~6 kB Ed25519/SHA-256 verify; well under AC11 2 MB budget)
+- [x] All postMessage listeners added by BE-8-5 use `isFromExpectedSource()` gating — `grep -rn "addEventListener('message'" src` shows 4 listeners total. BE-8-4 listeners (sandbox.ts translate-request, zotero-http.ts fetch-response, spike-page.ts fetch-request + translate-response) already gated. BE-8-5 listeners: `sandbox-fallback.ts:loadTranslatorFromParent` gates on `[opts.postTarget]`; `spike-page.ts` translator-load-request handler gates on `[iframe?.contentWindow ?? null]`. Both follow BE-8-4 H2 pattern exactly.
+- [x] `host_permissions` only adds `https://translators.milton.so/*` — no broader wildcards crept in. Verified in `dist/manifest.json` via `grep host_permissions`.
+- [x] `grep -rE "(milton/src-tauri|@milton-saas|src-tauri/)" src` returns zero hits (IPC boundary; AC18) — verified during Task 9
+- [x] AGPL §6 footer / README section drafted; `translator-bundle-pin.json` cites `upstreamCommit` — Task 8 README append (## Bundled translators section) + pin file has `upstreamCommit: "85dfb399fdc2a73d9755b7cab394af7826af6297"`
+- [ ] BE-8-4 arXiv spike (S1) still works after BE-8-5 changes (AC17 regression) — **PENDING Pierre G17-1 manual smoke (Task 9.5)**
+- [ ] CI green via background `gh run watch <id>` post-push (CLAUDE.md Rule 7) — **PENDING push (Task 10)**
+- [x] DO NOT flip sprint-status to `done` — code-review gate first ([[feedback-code-review-required-before-done]]). Story stops at `review` status; `/bmad_bmm_code-review` is a separate workflow.
 
 ## Dev Agent Record
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude Opus 4.7 (1M context) — `claude-opus-4-7[1m]`
 
 ### Debug Log References
 
+- Live manifest pin at story close: `85dfb399fdc2a73d9755b7cab394af7826af6297` (743 translators on translators.milton.so as of 2026-05-17T08:16:52Z)
+- Ed25519 public key embedded: `7ac3571fa3686b0d3814dbf951800fe69fcf3a4d2e3e82dde68f4c6c64b414b6` (32-byte; sourced from Milton-saas operator custody at `tools/translator-mirror/keys/manifest-signing.pub`; cross-verified across 3 sibling Milton-saas worktrees → identical SHA-256 `ed5915b85e0798f86b270dfb4997a41e2a055c5349cde876b4904f5076ea2c98`)
+- End-to-end sig verify confirmed via Node `crypto.verify` AND `@noble/ed25519@1.7.5` before infrastructure work began (fixture matches live + matches embedded pubkey)
+- `pnpm test`: 214/214 pass (BE-8-4 baseline 153 + 61 new BE-8-5 tests, exceeding the AC15 ≥175 target)
+- `pnpm typecheck`: clean
+- `pnpm build`: success — sandbox chunk 1,666 kB raw / **441.82 kB gzipped** vs BE-8-4 baseline 235 kB gzipped. Delta = **+207 kB gzipped** (≈+88 %) for 25× more bundled translators + ~6 kB Ed25519/SHA-256 verify primitive. Well under AC11's 2 MB gzipped budget (~22 % of budget used).
+- `pnpm refresh:translators` ×3: idempotent — `git status` clean after each re-run
+- IPC boundary (AC18): `grep -rE "(milton/src-tauri|@milton-saas|src-tauri/)" src` → zero hits
+
 ### Completion Notes List
 
+- **AC2 curated list (Task 1)**: 26 entries (lower end of the 50–100 charter target; growth deferred to post-MVP follow-up per AC2 lock-in). 5 generic frameworks + 3 aggregators (HighWire / HighWire 2.0 / Atypon — high publisher multiplier; back ~150+ sites between them) + 18 major publishers. Misses with rationale documented in `src/translator-runtime/curated-translators.txt`.
+- **AC6 architecture choice**: Verified ONCE at sandbox bootstrap via `verifyAllBundleIntegrity()` + `_setVerifiedSet()` (NOT lazily inside `getBundledTranslator` which stays sync). Pre-verifying at bootstrap avoids both async-API churn in `runTranslation` AND a race on concurrent first-calls.
+- **AC7 architecture choice**: Lazy CDN-fetch runs in popup/SW context (NOT sandbox — sandbox is opaque-origin + can't fetch from `translators.milton.so`). For BE-8-5 the handler lives in `spike-page.ts` marked `// SPIKE-ONLY: BE-8-6 supersedes` per Task 7.5 scope cut-line.
+- **AC10 protocol bump**: `PROTOCOL_VERSION` bumped 1 → 2. Type guards now accept `1 | 2` via `ACCEPTED_VERSIONS` set so a v1 emitter still interops with v2 listener (backward compat). v3 explicitly rejected — future bumps must extend the set deliberately.
+- **Test env split**: `manifest-verify.test.ts` runs in vitest default (node); `translator-fetcher.test.ts` runs in `@vitest-environment node` (explicit, NOT jsdom — `@noble/ed25519@1.x`'s jsdom code path tries `crypto.subtle.digest()` with Uint8Array which jsdom rejects with "not instance of ArrayBuffer/Buffer/TypedArray/DataView"); `sandbox-fallback.test.ts` runs in `@vitest-environment jsdom` (needs `addEventListener('message', ...)` + `setTimeout`). Documented at top of each file.
+- **Code style**: Followed every BE-8-4 code-review hardening pattern (H2 `isFromExpectedSource` on every new listener; M1 configurable timeouts; M3 round-trip tests per protocol message type; H1 populated File List).
+- **One TS workaround**: `as BufferSource` cast in `translator-fetcher.ts:sha256Hex` — TS 5.9 strict-types `Uint8Array<ArrayBufferLike>` no longer satisfies `crypto.subtle.digest`'s `BufferSource` parameter (`ArrayBufferView<ArrayBuffer>` excludes SharedArrayBuffer). Runtime works for any Uint8Array. Documented inline.
+- **One small spike API extension**: `miltonRuntimeSpike(url, translatorIdOverride?)` accepts an optional UUID parameter so Pierre can smoke-test the S2 lazy-fetch path with a UUID not in the bundle (otherwise it'd always use the bundled arXiv). Sandbox-side + spike-page-side both updated.
+
+**Sandbox-chunk size budget (AC11 + AC14 task 9.1):**
+
+| Build | Sandbox chunk (raw) | Sandbox chunk (gzipped) | Budget remaining |
+|---|---|---|---|
+| BE-8-4 (1 translator) | 908 kB | 235 kB | 1.77 MB (88 %) |
+| BE-8-5 (26 translators + verify) | 1,666 kB | **442 kB** | 1.58 MB (78 %) |
+| Δ | +758 kB raw | +207 kB gzipped | -8 % |
+
+**AC15 test count:**
+- BE-8-4 baseline: 153
+- BE-8-5 added: 61 (17 manifest-verify + 5 translator-bundle integrity + 12 protocol-v2 + 20 translator-fetcher + 7 sandbox-fallback)
+- Total: **214** (AC15 target ≥175, +39 over target)
+
+**AC16 smoke results (Pierre G17-1): PENDING Pierre's manual run — instructions below.**
+
+(Pierre fills in actual results before this story flips to `review`.)
+
+To execute the smoke:
+
+1. **Sideload the freshly-built dist/**
+   - In Chrome: `chrome://extensions/` → Developer mode ON → Load unpacked → select `dist/`
+   - Open the sandbox page directly: `chrome-extension://<EXTENSION_ID>/src/translator-runtime/spike-page.html`
+     (find `<EXTENSION_ID>` on chrome://extensions/)
+   - Open DevTools (F12) on the spike-page tab; switch to the sandbox iframe context via the dropdown above Console
+
+2. **S1 — bundled arXiv path** (NO translator-load-request expected):
+   ```js
+   const items = await miltonRuntimeSpike('https://arxiv.org/abs/2303.08774')
+   console.log(items.length, items[0]?.title)
+   ```
+   Expected: console shows `[milton-sandbox] bundle integrity: 26/26 translators verified` at bootstrap, then `runTranslation start` → `translator registered arXiv.org` (NOT "falling back to lazy CDN-fetch"). Items array length > 0 with the GPT-4 Technical Report title.
+
+3. **S2 — lazy CDN-fetch path** (translator-load-request expected):
+   ```js
+   // Library Hub Discover — in manifest, NOT in bundled set
+   await miltonRuntimeSpike('https://arxiv.org/abs/2303.08774', '00d5236c-ce1f-484b-9552-da8e2f10eee4')
+   ```
+   (Translation will fail because Library Hub Discover doesn't match arXiv URLs — that's OK. We're testing the LOAD path, not the translate path.)
+   Expected console: `[milton-sandbox] translator not in bundle; falling back to lazy CDN-fetch via parent` → `[milton-spike-page]` fetcher fetches `/repo/metadata` + verifies sig → fetches `/repo/code/00d5236c-...` + verifies SHA-256 → `lazy-loaded translator from parent Library Hub Discover` → translator registered. After: `chrome://extensions/` → Inspect spike-page → DevTools → Application → Storage → Extension Storage should show `translator-mirror-metadata` AND `translator-fetched:00d5236c-ce1f-484b-9552-da8e2f10eee4` entries.
+
+4. **S3 — unknown URL with bundled translator** (no translator-load-request; bundled arXiv runs but matches nothing):
+   ```js
+   const items = await miltonRuntimeSpike('https://example.com/some-random-page')
+   console.log('items:', items.length)  // expect 0 (no detectWeb match)
+   ```
+   Expected: no crash; empty items array.
+
+5. **AC17 regression — BE-8-4 spike still works exactly the same as S1.** Same as S1 (which IS the regression check).
+
 ### File List
+
+**New files (BE-8-5):**
+
+- `scripts/refresh-translator-bundle.ts` — Build-time refresh tool (~310 LOC)
+- `src/translator-runtime/curated-translators.txt` — Curated UUID list (26 entries + rationale)
+- `src/translator-runtime/manifest-signing-pubkey.ts` — Ed25519 pubkey constant (embedded trust anchor)
+- `src/translator-runtime/manifest-verify.ts` — `verifyManifestSignature` + `hexToBytes` + `bytesToHex`
+- `src/translator-runtime/manifest-verify.test.ts` — 17 tests
+- `src/translator-runtime/translator-fetcher.ts` — Lazy CDN-fetch + `chrome.storage.local` cache with LRU + hash-driven invalidation
+- `src/translator-runtime/translator-fetcher.test.ts` — 20 tests (`@vitest-environment node`)
+- `src/translator-runtime/sandbox-fallback.ts` — `loadTranslatorFromParent` extracted for testability
+- `src/translator-runtime/sandbox-fallback.test.ts` — 7 tests (`@vitest-environment jsdom`)
+- `src/translator-runtime/__fixtures__/manifest.fixture.json` — Frozen manifest snapshot (regen procedure documented in test file)
+- `src/translator-runtime/__fixtures__/manifest.fixture.sig` — Frozen Ed25519 signature
+- `src/translator-runtime/translators/*.js` — 26 vendored translator files (auto-generated by refresh script): `acm-digital-library.js`, `arxiv-org.js`, `atypon-journals.js`, `cambridge-core.js`, `cell-press.js`, `coins.js`, `doi-content-negotiation.js`, `embedded-metadata.js`, `highwire.js`, `highwire-2-0.js`, `ieee-xplore.js`, `jstor.js`, `national-bureau-of-economic-research.js`, `nature-publishing-group.js`, `oxford-university-press.js`, `project-muse.js`, `pubmed.js`, `pubmed-central.js`, `repec-ideas.js`, `sage-journals.js`, `sciencedirect.js`, `springer-link.js`, `ssrn.js`, `taylor-and-francis-nejm.js`, `unapi.js`, `wiley-online-library.js`
+- `translator-bundle-pin.json` — Build-time pin file (repo root): `upstreamCommit` + `fetchedAt` + `publicKey` + 26-entry `bundleHashes` map
+
+**Modified files (BE-8-5):**
+
+- `manifest.config.ts` — Add `https://translators.milton.so/*` to `host_permissions`
+- `package.json` — Add `@noble/ed25519@^1.7.3` runtime dep, `tsx@^4.22.1` devDep, `refresh:translators` npm script
+- `pnpm-lock.yaml` — Lockfile updates for the new deps
+- `README.md` — Append "## Bundled translators (BE-8-5)" section (between Companion infrastructure + Tech stack); story-map status updates for BE-8-3 / BE-8-4 / BE-8-5
+- `tsconfig.json` — Add `translator-bundle-pin.json` to `include` (lives at repo root, not under `src/`)
+- `src/translator-runtime/translator-bundle.ts` — Auto-generated `REGISTRY` block (Task 3); `verifyAllBundleIntegrity` + `_setVerifiedSet` + `_resetForTests` + `verifiedSet` gate on `getBundledTranslator` (Task 4)
+- `src/translator-runtime/translator-bundle.test.ts` — Relaxed "1 translator" assertion to "20-200" range; added 5 AC6 integrity-gate tests
+- `src/translator-runtime/sandbox.ts` — `bootstrapAll` async-wraps bootstrap to call `bootstrapIntegrity` (Task 4); `runTranslation` falls back to `loadTranslatorFromParent` on bundle miss (Task 7); `miltonRuntimeSpike` accepts optional `translatorIdOverride`
+- `src/translator-runtime/spike-page.ts` — SPIKE-ONLY translator-load-request handler delegating to `fetchTranslatorFromCdn` (Task 7); `spike()` accepts optional `translatorIdOverride`
+- `src/translator-runtime/host-bridge.ts` — `PROTOCOL_VERSION` 1 → 2; `ACCEPTED_VERSIONS` set + `isAcceptedVersion`; 2 new type guards + 2 new constructors; refactored shared `isTypedMessage` helper
+- `src/translator-runtime/host-bridge.test.ts` — 12 new protocol-v2 tests (7 new types + 4 backward-compat + 1 future-bump rejection)
+- `src/translator-runtime/zotero-types.d.ts` — `ProtocolVersion` type; `TranslatorLoadRequest` + `TranslatorLoadResponse` types; existing types switched to `ProtocolVersion` union; `miltonRuntimeSpike` global signature widened with `translatorIdOverride`
+
+**Files NOT touched (intentional — no behavior change needed):**
+
+- `src/translator-runtime/zotero-translators.ts` — `registerTranslator` API was already perfect for both bundled and lazy-fetched paths (BE-8-4 design)
+- `src/translator-runtime/zotero-http.ts` — Fetch-proxy contract unchanged
+- `src/translator-runtime/zotero-translate.ts` — ItemSaver + timeout logic unchanged
+- `src/translator-runtime/schema.ts` — Schema init unchanged
+- Vendored translators submodule (`vendor/zotero-translate`) — pinned at BE-8-4 SHA, untouched
 
 ## Change Log
 
