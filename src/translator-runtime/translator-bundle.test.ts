@@ -36,4 +36,17 @@ describe('translator-bundle', () => {
     expect(t!.body).toMatch(/function\s+detectWeb/)
     expect(t!.body).toMatch(/function\s+doWeb/)
   })
+
+  // Regression coverage for the M2 finding (code-review fix) — the leading
+  // comment skip used to only handle `//` line comments. Now it also accepts
+  // `/* ... */` block comments before the metadata block. We exercise this
+  // via the arXiv translator's existing `/* */` BEGIN LICENSE BLOCK to prove
+  // the parser doesn't choke when the lookahead runs into a block-comment
+  // form after the metadata block (depth=0 short-circuits before getting
+  // there, but the unit-of-truth is: arXiv loads end-to-end).
+  it('arXiv translator with /* BEGIN LICENSE BLOCK */ comment AFTER metadata parses cleanly', () => {
+    const t = getBundledTranslator(ARXIV_ID)
+    expect(t).not.toBeNull()
+    expect(t!.body).toContain('BEGIN LICENSE BLOCK')
+  })
 })

@@ -21,10 +21,15 @@ import type {
   ZoteroHttpRequestOptions,
   ZoteroHttpResponse,
 } from './zotero-types'
-import { generateRequestId, isFetchProxyResponse, PROTOCOL_VERSION } from './host-bridge'
+import {
+  generateRequestId,
+  isFetchProxyResponse,
+  isFromExpectedSource,
+  PROTOCOL_VERSION,
+} from './host-bridge'
 
 const FETCH_TIMEOUT_DEFAULT_MS = 30000
-const PROXY_TIMEOUT_MS = 30000
+const PROXY_TIMEOUT_DEFAULT_MS = 30000
 
 export class ZoteroHttpError extends Error {
   constructor(
@@ -127,6 +132,7 @@ async function fetchViaProxy(
   options: ZoteroHttpRequestOptions,
 ): Promise<{ status: number; responseText: string; responseHeaders: string; responseURL: string }> {
   const requestId = generateRequestId()
+  const timeoutMs = options.timeout ?? PROXY_TIMEOUT_DEFAULT_MS
   const msg: FetchProxyRequest = {
     type: 'fetch-request',
     protocolVersion: PROTOCOL_VERSION,
@@ -135,12 +141,17 @@ async function fetchViaProxy(
     url,
     options,
   }
+  // Only the parent window (spike-page / BE-8-6 offscreen doc) is allowed to
+  // reply with a fetch-response. Capture the reference at call time so a
+  // later reparent doesn't widen the trust boundary.
+  const allowedSources: ReadonlyArray<Window | null> = [window.parent]
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       window.removeEventListener('message', handler)
-      reject(new ZoteroHttpError(url, `fetch-proxy timeout after ${PROXY_TIMEOUT_MS}ms`))
-    }, PROXY_TIMEOUT_MS)
+      reject(new ZoteroHttpError(url, `fetch-proxy timeout after ${timeoutMs}ms`))
+    }, timeoutMs)
     const handler = (event: MessageEvent): void => {
+      if (!isFromExpectedSource(event, allowedSources)) return
       if (!isFetchProxyResponse(event.data)) return
       const resp = event.data as FetchProxyResponse
       if (resp.requestId !== requestId) return
