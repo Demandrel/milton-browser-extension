@@ -1,0 +1,3 @@
+[submodule "vendor/zotero-translate"]
+	path = vendor/zotero-translate
+	url = https://github.com/zotero/translate.git

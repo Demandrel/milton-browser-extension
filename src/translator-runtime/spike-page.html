@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later
+     Copyright (C) 2026  Pierre Jacquel
+
+     This file is part of milton-browser-extension.
+     See COPYING for license terms. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Milton translator runtime spike (BE-8-4)</title>
+    <style>
+      body { font: 14px/1.5 system-ui, sans-serif; padding: 1rem; max-width: 60ch; }
+      code { background: #f4f4f4; padding: 0.15rem 0.35rem; border-radius: 3px; }
+      iframe { display: none; }
+    </style>
+  </head>
+  <body>
+    <h1>Milton translator runtime spike</h1>
+    <p>Open devtools console. Then call:</p>
+    <pre><code>await miltonRuntimeSpike('https://arxiv.org/abs/2303.08774')</code></pre>
+    <p>
+      This page is the extension-origin wrapper for the sandbox iframe below. It pre-fetches the URL
+      (extension origin → <code>host_permissions</code> apply → no CORS issue), then posts the HTML
+      to the sandbox via postMessage. The sandbox runs the translator and posts items back.
+    </p>
+    <iframe id="sandbox" src="./sandbox.html"></iframe>
+    <script type="module" src="./spike-page.ts"></script>
+  </body>
+</html>
