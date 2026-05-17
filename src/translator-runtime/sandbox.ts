@@ -341,11 +341,18 @@ function wirePostMessageListener(): void {
       const reply = makeTranslateResponse({ requestId: msg.requestId, items })
       ;(event.source as Window | null)?.postMessage(reply, { targetOrigin: '*' })
     } catch (err) {
+      // BE-8-6 smoke: include stack trace + log to sandbox-side console so
+      // popup-side OffscreenClientError carries the originating framework
+      // line. Without this, debugging a translator runtime crash requires
+      // attaching DevTools to an offscreen document iframe — painful.
+      console.error('[milton-sandbox] runTranslation threw', err)
+      const message = err instanceof Error ? err.message : String(err)
+      const stack = err instanceof Error && typeof err.stack === 'string' ? err.stack : undefined
       const reply = makeTranslateResponse({
         requestId: msg.requestId,
         error: {
           code: err instanceof TranslatorTimeoutError ? 'TIMEOUT' : 'RUNTIME_ERROR',
-          message: err instanceof Error ? err.message : String(err),
+          message: stack !== undefined ? `${message}\n${stack}` : message,
         },
       })
       ;(event.source as Window | null)?.postMessage(reply, { targetOrigin: '*' })
