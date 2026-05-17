@@ -119,28 +119,66 @@ export class TranslatorFetcherError extends Error {
 // ────────────────────────────────────────────────────────────────────────
 // chrome.storage.local wrappers — Promise-style API (MV3 ≥88)
 // ────────────────────────────────────────────────────────────────────────
+//
+// BE-8-6 smoke S3 caught: chrome.storage is NOT available in MV3
+// OFFSCREEN documents (the offscreen API restricts the chrome.* surface
+// to fetch/DOMParser/runtime.sendMessage/etc — chrome.storage is
+// explicitly NOT in the allowed list). The lazy-fetch path now runs
+// inside offscreen (BE-8-6 lifted the SPIKE-ONLY handler from
+// spike-page.ts), so the storage primitives must degrade gracefully
+// instead of throwing STORAGE_UNAVAILABLE.
+//
+// Behavior when storage is missing:
+//   - reads → return empty result (treated as cache miss; falls through
+//     to fresh fetch + verify; correctness preserved, performance
+//     loses the 7-day cache benefit but lazy-fetch is the COLD path
+//     so the impact is bounded).
+//   - writes → silently no-op (return without persisting; correctness
+//     preserved because the fetched verified bytes still get returned
+//     to the caller).
+// A single warning log on first storage-miss surfaces the degradation
+// in DevTools without spamming. Future improvement: route lazy-fetch
+// through a SW that has full chrome.storage access.
 
 interface StorageGetResult {
   [key: string]: unknown
 }
 
+let storageMissingLogged = false
+function isStorageAvailable(): boolean {
+  return typeof chrome !== 'undefined' && chrome.storage !== undefined
+}
+function logStorageMissingOnce(): void {
+  if (storageMissingLogged) return
+  storageMissingLogged = true
+  console.warn(
+    '[translator-fetcher] chrome.storage.local unavailable in this context ' +
+      '(likely an offscreen document — storage is not in the offscreen API ' +
+      'allowed list). Lazy CDN-fetch will work but without persistent caching; ' +
+      'every fetch re-verifies + re-downloads from translators.milton.so.',
+  )
+}
+
 async function storageGet(keys: string | string[] | null): Promise<StorageGetResult> {
-  if (typeof chrome === 'undefined' || chrome.storage === undefined) {
-    throw new TranslatorFetcherError('STORAGE_UNAVAILABLE', 'chrome.storage.local is not available in this context')
+  if (!isStorageAvailable()) {
+    logStorageMissingOnce()
+    return {}
   }
   return (await chrome.storage.local.get(keys)) as StorageGetResult
 }
 
 async function storageSet(items: Record<string, unknown>): Promise<void> {
-  if (typeof chrome === 'undefined' || chrome.storage === undefined) {
-    throw new TranslatorFetcherError('STORAGE_UNAVAILABLE', 'chrome.storage.local is not available in this context')
+  if (!isStorageAvailable()) {
+    logStorageMissingOnce()
+    return
   }
   await chrome.storage.local.set(items)
 }
 
 async function storageRemove(keys: string | string[]): Promise<void> {
-  if (typeof chrome === 'undefined' || chrome.storage === undefined) {
-    throw new TranslatorFetcherError('STORAGE_UNAVAILABLE', 'chrome.storage.local is not available in this context')
+  if (!isStorageAvailable()) {
+    logStorageMissingOnce()
+    return
   }
   await chrome.storage.local.remove(keys)
 }
