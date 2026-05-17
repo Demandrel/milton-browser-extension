@@ -586,7 +586,16 @@ function render(): void {
       break
 
     case 'posting':
-      root.innerHTML = `<p class="milton-popup-loading">Saving to Milton…</p>`
+      // BE-8-6 smoke S4 debug: render the payload directly in the popup UI
+      // so Pierre can read it WITHOUT opening extension DevTools (which
+      // closes the popup the moment it's opened — see prior turn). Remove
+      // once we know whether type=website is being sent or not.
+      root.innerHTML = `
+        <p class="milton-popup-loading">Saving to Milton…</p>
+        <pre style="font-size:10px;background:#f4f4f4;padding:8px;border-radius:4px;overflow:auto;max-height:300px;white-space:pre-wrap;word-break:break-word">${escapeHtml(
+          JSON.stringify(state.payload, null, 2),
+        )}</pre>
+      `
       break
 
     case 'success':
