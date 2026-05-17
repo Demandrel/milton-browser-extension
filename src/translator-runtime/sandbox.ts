@@ -47,7 +47,7 @@ import translateItemJs from '../../vendor/zotero-translate/src/translation/trans
 import schemaJson from '../../vendor/zotero-translate/modules/utilities/resource/schema/global/schema.json'
 import dateFormatsJson from '../../vendor/zotero-translate/modules/utilities/resource/dateFormats.json'
 
-import { installZoteroHttp } from './zotero-http'
+import { installZoteroHttp, wrapDocument } from './zotero-http'
 import { installZoteroTranslators, registerTranslator } from './zotero-translators'
 import { installZoteroItemSaver, translateWithTimeout, TranslatorTimeoutError } from './zotero-translate'
 import {
@@ -195,58 +195,11 @@ async function bootstrapIntegrity(): Promise<void> {
  * Also injects a <base> element so doc.baseURI returns the original URL.
  */
 function parseHtmlAsDocument(html: string, url: string): Document {
+  // wrapDocument lives in zotero-http.ts (single source of truth for the
+  // fake-location Proxy pattern — also reused by Zotero.HTTP.processDocuments).
+  // See sandbox doc-Proxy notes in zotero-http.ts:wrapDocument.
   const realDoc = new DOMParser().parseFromString(html, 'text/html')
-  // Inject <base> so doc.baseURI returns the original URL.
-  const head = realDoc.querySelector('head') ?? realDoc.documentElement
-  const existingBase = head.querySelector('base')
-  if (existingBase === null) {
-    const baseEl = realDoc.createElement('base')
-    baseEl.href = url
-    head.insertBefore(baseEl, head.firstChild)
-  }
-  // Build a Location-shaped surface from the URL.
-  const urlObj = new URL(url)
-  const fakeLocation = {
-    href: urlObj.href,
-    origin: urlObj.origin,
-    protocol: urlObj.protocol,
-    host: urlObj.host,
-    hostname: urlObj.hostname,
-    port: urlObj.port,
-    pathname: urlObj.pathname,
-    search: urlObj.search,
-    hash: urlObj.hash,
-    toString: () => urlObj.href,
-  }
-  // Proxy the doc: intercept `.location` reads, bind methods to the
-  // real target so DOM internal-slot accesses (querySelector, etc.) work.
-  //
-  // BE-8-6 smoke fix: method-call args that are THIS proxy must be
-  // unwrapped to the real target before invocation. Translators commonly
-  // do `doc.evaluate(xpath, doc, ...)` where param 2 (contextNode) must
-  // be a real Node — the platform's Document.prototype.evaluate runs an
-  // internal-slot check that rejects Proxies with
-  // "TypeError: Failed to execute 'evaluate' on 'Document': parameter 2
-  // is not of type 'Node'". Caught by ScienceDirect smoke S2; same
-  // pattern hits any translator that uses Zotero.Utilities.xpath().
-  let proxy: Document
-  proxy = new Proxy(realDoc, {
-    get(target: Document, prop: string | symbol): unknown {
-      if (prop === 'location') {
-        return fakeLocation
-      }
-      const value = Reflect.get(target, prop, target)
-      if (typeof value === 'function') {
-        const fn = value as (...a: unknown[]) => unknown
-        return function (this: unknown, ...args: unknown[]) {
-          const unwrapped = args.map((a) => (a === proxy ? target : a))
-          return fn.apply(target, unwrapped)
-        }
-      }
-      return value
-    },
-  }) as Document
-  return proxy
+  return wrapDocument(realDoc, url)
 }
 
 interface RunTranslationArgs {

@@ -42,6 +42,106 @@ export class ZoteroHttpError extends Error {
 }
 
 /**
+ * BE-8-6 (also fixes BE-8-4 issue #7): minimal stub matching the upstream
+ * `Zotero.HTTP.UnexpectedStatusException` shape referenced by
+ * `vendor/zotero-translate/src/utilities_translate.js:341` for bot-challenge
+ * retry detection. We don't actually raise the bot-challenge retry path
+ * (no Zotero.BrowserRequest registered) so this exists primarily to make
+ * `instanceof Zotero.HTTP.UnexpectedStatusException` evaluate to false
+ * without crashing the lookup.
+ */
+export class UnexpectedStatusException extends Error {
+  readonly status: number
+  readonly xmlhttp: unknown
+  constructor(xmlhttp: unknown, message: string, status: number) {
+    super(message)
+    this.name = 'UnexpectedStatusException'
+    this.status = status
+    this.xmlhttp = xmlhttp
+  }
+}
+
+/**
+ * BE-8-6: wrap a DOMParser-produced Document with a Proxy that fakes
+ * `.location` (DOMParser docs have location === null per HTML spec) and
+ * unwraps itself when passed as a method-call argument (e.g.,
+ * `doc.evaluate(xpath, doc, ...)` — platform's evaluate rejects Proxies
+ * via internal-slot type check). Extracted from sandbox.ts:parseHtmlAsDocument
+ * so the same wrap can be reused by `processDocuments` below.
+ */
+export function wrapDocument(doc: Document, url: string): Document {
+  // Inject <base> so doc.baseURI returns the original URL.
+  const head = doc.querySelector('head') ?? doc.documentElement
+  if (head !== null && head.querySelector('base') === null) {
+    const baseEl = doc.createElement('base')
+    baseEl.href = url
+    head.insertBefore(baseEl, head.firstChild)
+  }
+  const urlObj = new URL(url)
+  const fakeLocation = {
+    href: urlObj.href,
+    origin: urlObj.origin,
+    protocol: urlObj.protocol,
+    host: urlObj.host,
+    hostname: urlObj.hostname,
+    port: urlObj.port,
+    pathname: urlObj.pathname,
+    search: urlObj.search,
+    hash: urlObj.hash,
+    toString: () => urlObj.href,
+  }
+  let proxy: Document
+  proxy = new Proxy(doc, {
+    get(target: Document, prop: string | symbol): unknown {
+      if (prop === 'location') {
+        return fakeLocation
+      }
+      const value = Reflect.get(target, prop, target)
+      if (typeof value === 'function') {
+        const fn = value as (...a: unknown[]) => unknown
+        return function (this: unknown, ...args: unknown[]) {
+          const unwrapped = args.map((a) => (a === proxy ? target : a))
+          return fn.apply(target, unwrapped)
+        }
+      }
+      return value
+    },
+  }) as Document
+  return proxy
+}
+
+/**
+ * BE-8-6: fetch each URL, parse as HTML, wrap with fake-location Proxy,
+ * pass to processor(doc). Returns the processor results array. Mirrors
+ * upstream's `Zotero.HTTP.processDocuments` shape — translators rely on
+ * it for follow-up fetches (e.g., DBLP's "selectItems then fetch each
+ * record page").
+ *
+ * Sequential (not parallel) to keep memory bounded — a translator
+ * resolving 100 search hits at once would otherwise spawn 100 concurrent
+ * fetches + 100 concurrent DOMParsers + 100 in-flight Proxy docs. Most
+ * translators select a small handful via Zotero.selectItems, so the
+ * sequential cost is acceptable.
+ */
+export async function zoteroHttpProcessDocuments(
+  urls: string[] | string,
+  processor: (doc: Document) => unknown | Promise<unknown>,
+): Promise<unknown[]> {
+  const urlList = typeof urls === 'string' ? [urls] : urls
+  const results: unknown[] = []
+  for (const url of urlList) {
+    const resp = await zoteroHttpRequest('GET', url, { responseType: 'document' })
+    let doc = resp.response as Document
+    if (doc !== null && doc.location === null) {
+      doc = wrapDocument(doc, resp.responseURL || url)
+    }
+    const result = await processor(doc)
+    results.push(result)
+  }
+  return results
+}
+
+/**
  * Translators expect `Zotero.HTTP.request` returning
  * `{status, responseText, responseHeaders, responseURL, response?}`.
  *
@@ -186,5 +286,15 @@ function serializeHeaders(headers: Headers): string {
  * scripts have loaded.
  */
 export function installZoteroHttp(zotero: ZoteroGlobal): void {
-  zotero.HTTP = { request: zoteroHttpRequest }
+  zotero.HTTP = {
+    request: zoteroHttpRequest,
+    // BE-8-6: framework + many translators (DBLP, etc.) call these.
+    // processDocuments fetches multiple URLs + invokes processor per doc.
+    // wrapDocument injects fake-location Proxy so doc.location.href works.
+    // UnexpectedStatusException is referenced by utilities_translate.js's
+    // bot-challenge retry catch — instanceof check must not throw.
+    processDocuments: zoteroHttpProcessDocuments,
+    wrapDocument,
+    UnexpectedStatusException,
+  } as unknown as ZoteroGlobal['HTTP']
 }
