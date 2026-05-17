@@ -733,9 +733,11 @@ function render(): void {
   // the popup console. Rendered AFTER state markup so it doesn't disrupt
   // existing layout; conditional on import.meta.env.DEV (stripped from prod).
   const renderDebugStripe = (): void => {
-    // BE-8-7 debugging: always-on during this branch so the prod `pnpm build`
-    // sideload also shows the stripe. TODO: gate on import.meta.env.DEV
-    // before merge (or remove entirely once Flow A failure mode is fixed).
+    // DEV-only — stripped from production `pnpm build` via the Vite env gate.
+    // Kept in the codebase as a diagnostic surface for future PDF-flow work
+    // (Pierre's smoke S1/S2/S4 used this to confirm Flow A success +
+    // diagnose Flow B's anti-captcha-gated empty-attachments case).
+    if (!import.meta.env.DEV) return
     const parts: string[] = [`mode=${pdfAttachmentMode}`]
     if (lastFlowAOutcome !== null) parts.push(`flowA=${lastFlowAOutcome}`)
     if (pendingPdfBytes !== null) parts.push(`bytes=${pendingPdfBytes.byteLength}`)
