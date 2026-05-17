@@ -1605,6 +1605,17 @@ async function save(): Promise<void> {
     state.metadataSource === 'server-translate',
   )
 
+  // BE-8-6 smoke S4 debug: surface the exact payload going to the connector
+  // so we can distinguish "heuristic didn't fire" from "connector mapped
+  // type=website → article on its side". Remove once Pierre confirms which.
+  console.log('[milton-popup] saving payload', {
+    metadataSource: state.metadataSource,
+    type: payload.type,
+    year: payload.year,
+    title: payload.title,
+    url: payload.url,
+  })
+
   setState({ kind: 'posting', payload })
   const result = await createReference(payload)
   dispatchCreateReferenceResult(result)
