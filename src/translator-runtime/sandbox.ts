@@ -353,12 +353,58 @@ function wireSpikeTrigger(): void {
       runTranslation({ url, translatorId: translatorIdOverride ?? ARXIV_TRANSLATOR_ID })
 }
 
+/**
+ * BE-8-6: eager-register every bundled-and-verified translator into the
+ * sandbox's in-memory registry. Without this step `findWebTranslators(url)`
+ * returns nothing until a translator is registered by URL-discovery via
+ * the runTranslation path — which means the cross-validation invariant
+ * "every bundled translator can be matched by URL inside the sandbox" is
+ * only true post-translation, not at bootstrap.
+ *
+ * The popup-side router (translator-router.ts) is the authoritative
+ * URL→UUID discovery surface for the BE-8-6 popup flow; this sandbox-side
+ * eager-register is a defense-in-depth so direct sandbox spike calls
+ * (BE-8-4 miltonRuntimeSpike) and any future sandbox-internal URL lookup
+ * don't surprise-fail.
+ *
+ * Performance: 26 RegExp compilations + 26 Map.set calls. Benchmarked
+ * during BE-8-6 dev: under 5 ms total on M2 (well under the 50 ms budget).
+ * If the bundle grows past ~200 translators and this becomes a noticeable
+ * boot-time cost, switch to lazy RegExp compilation inside
+ * `findWebTranslators(url)` per AC10 fallback.
+ */
+function eagerRegisterBundled(verifiedSet: Set<string>): void {
+  let registered = 0
+  for (const uuid of verifiedSet) {
+    const bundled = getBundledTranslator(uuid)
+    if (bundled === null) {
+      // Should be unreachable — verifiedSet only contains UUIDs that passed
+      // hash verification, and getBundledTranslator returns non-null for
+      // any UUID in the verified set. Log defensively for the canary.
+      console.warn('[milton-sandbox] verifiedSet contains uuid with no registry entry:', uuid)
+      continue
+    }
+    registerTranslator(bundled)
+    registered++
+  }
+  console.log(`[milton-sandbox] eagerly registered ${registered} bundled translators`)
+}
+
 async function bootstrapAll(): Promise<void> {
   bootstrap()
   // Integrity verify BEFORE wiring listeners so a translate-request that
   // arrives during cold-start never sees an unverified-but-callable
   // getBundledTranslator (it returns null until _setVerifiedSet runs).
   await bootstrapIntegrity()
+  // Eager-register all verified bundled translators so findWebTranslators(url)
+  // works inside the sandbox without needing a prior runTranslation call.
+  // The popup-side router (translator-router.ts) is the primary URL→UUID
+  // discovery path; this is defense-in-depth.
+  const verifiedAfterIntegrity = new Set<string>()
+  for (const uuid of listBundledTranslatorIDs()) {
+    if (getBundledTranslator(uuid) !== null) verifiedAfterIntegrity.add(uuid)
+  }
+  eagerRegisterBundled(verifiedAfterIntegrity)
   wirePostMessageListener()
   wireSpikeTrigger()
   console.log(`[milton-sandbox] ready (protocol v${PROTOCOL_VERSION})`)

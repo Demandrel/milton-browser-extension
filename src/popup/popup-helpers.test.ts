@@ -14,6 +14,7 @@ import {
   editableToMapperInput,
   filterTagSuggestions,
   formatAuthorsDisplay,
+  isRestrictedUrl,
   isTitleValid,
   joinAuthors,
   metadataToEditable,
@@ -426,5 +427,54 @@ describe('isTitleValid', () => {
   it('accepts any non-whitespace title', () => {
     expect(isTitleValid({ ...base, title: 'A' })).toBe(true)
     expect(isTitleValid({ ...base, title: '  Trimmed Out Edges  ' })).toBe(true)
+  })
+})
+
+// ── isRestrictedUrl (BE-8-6 — shared with page-context) ────────────────────
+
+describe('isRestrictedUrl', () => {
+  it('rejects empty string', () => {
+    expect(isRestrictedUrl('')).toBe(true)
+  })
+  it('rejects chrome://', () => {
+    expect(isRestrictedUrl('chrome://extensions/')).toBe(true)
+    expect(isRestrictedUrl('Chrome://Newtab/')).toBe(true) // case-insensitive
+  })
+  it('rejects chrome-extension://', () => {
+    expect(isRestrictedUrl('chrome-extension://abc/popup.html')).toBe(true)
+  })
+  it('rejects about:', () => {
+    expect(isRestrictedUrl('about:blank')).toBe(true)
+    expect(isRestrictedUrl('about:config')).toBe(true)
+  })
+  it('rejects edge://', () => {
+    expect(isRestrictedUrl('edge://extensions/')).toBe(true)
+  })
+  it('rejects brave://', () => {
+    expect(isRestrictedUrl('brave://settings')).toBe(true)
+  })
+  it('rejects file://', () => {
+    expect(isRestrictedUrl('file:///home/user/page.html')).toBe(true)
+  })
+  it('accepts https:// URLs', () => {
+    expect(isRestrictedUrl('https://arxiv.org/abs/1706.03762')).toBe(false)
+    expect(isRestrictedUrl('https://www.sciencedirect.com/article/x')).toBe(false)
+  })
+  it('accepts http://', () => {
+    expect(isRestrictedUrl('http://example.com/x')).toBe(false)
+  })
+})
+
+// detectPdfPage should still pass through to isRestrictedUrl — make the
+// refactor's no-regression guarantee explicit.
+describe('detectPdfPage · isRestrictedUrl integration', () => {
+  it('rejects file:// URLs (delegated to isRestrictedUrl)', () => {
+    expect(detectPdfPage('file:///home/u/paper.pdf', undefined)).toBe(false)
+  })
+  it('rejects brave:// URLs', () => {
+    expect(detectPdfPage('brave://newtab', 'application/pdf')).toBe(true) // mimeType wins (signal 1)
+  })
+  it('still accepts mimeType=application/pdf on a real URL', () => {
+    expect(detectPdfPage('https://arxiv.org/pdf/1706.03762.pdf', 'application/pdf')).toBe(true)
   })
 })

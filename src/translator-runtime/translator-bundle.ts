@@ -286,6 +286,28 @@ export function listBundledTranslatorIDs(): string[] {
   return [...idIndex.keys()]
 }
 
+/**
+ * BE-8-6: return parsed metadata for every bundled entry. Consumed by the
+ * translator-router (URL → UUID discovery) so it can match `metadata.target`
+ * regexes against the active tab URL without going through the sandbox's
+ * registry (the popup runs in a different window from the sandbox).
+ *
+ * Returns ALL bundled entries regardless of `verifiedSet` state — discovery
+ * needs to see candidate UUIDs even pre-bootstrap; the verifiedSet gate
+ * applies later when `getBundledTranslator(uuid)` is actually called.
+ */
+export function listBundledTranslators(): BundledTranslator[] {
+  if (idIndex === null) {
+    idIndex = buildIdIndex()
+  }
+  const out: BundledTranslator[] = []
+  for (const key of idIndex.values()) {
+    const parsed = REGISTRY[key].parsed
+    if (parsed !== undefined) out.push(parsed)
+  }
+  return out
+}
+
 // Test seam: reset the lazy index (called by tests that mutate REGISTRY).
 // Kept for backward compat with BE-8-4 tests; new tests prefer _resetForTests.
 export function _resetIdIndexForTests(): void {

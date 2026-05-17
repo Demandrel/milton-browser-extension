@@ -153,6 +153,33 @@ export function isTitleValid(editable: EditableMetadata): boolean {
 }
 
 /**
+ * BE-8-6: shared restricted-URL guard. Used by `popup.ts:boot()` to short-circuit
+ * to `cannot-capture` and by `src/lib/page-context.ts:scrapeActiveTabHtml` to
+ * reject the chrome.scripting call before it errors. Keeping ONE definition
+ * means drift can't open between the popup gate and the scrape gate — both
+ * must reject the same URL classes.
+ *
+ * Restricted schemes:
+ *   - chrome:// / chrome-extension:// — browser-internal pages (extension
+ *     scripting forbidden by Chrome)
+ *   - about: / edge:// / brave:// — Firefox/Edge/Brave internal pages
+ *   - file:// — local files; extensions need explicit "Allow access to file
+ *     URLs" toggle the user controls. Treat as unsupported by default.
+ */
+export function isRestrictedUrl(url: string): boolean {
+  if (url.length === 0) return true
+  const lower = url.toLowerCase()
+  return (
+    lower.startsWith('chrome://') ||
+    lower.startsWith('chrome-extension://') ||
+    lower.startsWith('about:') ||
+    lower.startsWith('edge://') ||
+    lower.startsWith('brave://') ||
+    lower.startsWith('file://')
+  )
+}
+
+/**
  * BE-7: detect whether the active tab is itself a PDF document.
  *
  * Two signals, in order of preference:
@@ -173,20 +200,12 @@ export function detectPdfPage(url: string, mimeType?: string): boolean {
   if (mimeType === 'application/pdf') return true
   if (!url) return false
   // Reject restricted-URL schemes defensively (popup boot already blocks these,
-  // but the helper is exported and must be safe to call standalone).
-  const lower = url.toLowerCase()
-  if (
-    lower.startsWith('chrome://') ||
-    lower.startsWith('chrome-extension://') ||
-    lower.startsWith('about:') ||
-    lower.startsWith('edge://') ||
-    lower.startsWith('brave://') ||
-    lower.startsWith('file://')
-  ) {
-    return false
-  }
+  // but the helper is exported and must be safe to call standalone). Reuses
+  // the shared `isRestrictedUrl` so the two definitions can't drift.
+  if (isRestrictedUrl(url)) return false
   // Strip query (`?...`) and fragment (`#...`) before suffix-checking so URLs
   // like `https://host/paper.pdf?download=true` flag correctly.
+  const lower = url.toLowerCase()
   const queryIdx = lower.indexOf('?')
   const hashIdx = lower.indexOf('#')
   const cutAt = [queryIdx, hashIdx].filter((i) => i >= 0).reduce((a, b) => Math.min(a, b), lower.length)

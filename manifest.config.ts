@@ -32,6 +32,16 @@ export default defineManifest({
     // default 10 MB quota). Without this permission `chrome.storage.local`
     // is undefined and the lazy-fetch path throws STORAGE_UNAVAILABLE.
     'storage',
+    // BE-8-6 — popup uses chrome.scripting.executeScript against the active
+    // tab to scrape its rendered DOM (Class 3 capture flow). Combined with
+    // `activeTab` (already declared) this grants per-invocation scripting
+    // rights on the user-clicked tab without broad host_permissions.
+    'scripting',
+    // BE-8-6 — popup uses chrome.offscreen API to host the translator
+    // sandbox iframe outside the popup's window (so translations survive
+    // popup close). One offscreen document per extension; created lazily
+    // via offscreen-client.ts:ensureOffscreenDocument.
+    'offscreen',
   ],
   host_permissions: [
     'https://translate.milton.so/*',

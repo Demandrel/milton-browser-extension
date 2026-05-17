@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later
+     Copyright (C) 2026  Pierre Jacquel
+
+     This file is part of milton-browser-extension.
+     See COPYING for license terms.
+
+     BE-8-6: Offscreen document — production parent of the sandbox iframe.
+     Created at runtime via chrome.offscreen.createDocument; persists across
+     popup-close (Chrome's 30s idle-shutdown handles teardown).
+
+     This document hosts (a) the sandbox iframe that runs translator JS,
+     (b) a chrome.runtime listener that brokers popup ↔ sandbox postMessage
+     translation, and (c) the translator-load-request fetch-proxy lifted
+     from spike-page.ts.
+
+     Headless: the iframe is invisible (display:none) — offscreen docs are
+     not rendered to a user-facing surface; the iframe is purely an
+     execution context for the translator runtime.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Milton offscreen translator host</title>
+  </head>
+  <body>
+    <iframe id="sandbox" src="../translator-runtime/sandbox.html" style="display:none"></iframe>
+    <script type="module" src="./offscreen.ts"></script>
+  </body>
+</html>
