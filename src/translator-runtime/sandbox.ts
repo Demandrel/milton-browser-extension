@@ -47,7 +47,7 @@ import translateItemJs from '../../vendor/zotero-translate/src/translation/trans
 import schemaJson from '../../vendor/zotero-translate/modules/utilities/resource/schema/global/schema.json'
 import dateFormatsJson from '../../vendor/zotero-translate/modules/utilities/resource/dateFormats.json'
 
-import { installZoteroHttp } from './zotero-http'
+import { installZoteroHttp, wrapDocument } from './zotero-http'
 import { installZoteroTranslators, registerTranslator } from './zotero-translators'
 import { installZoteroItemSaver, translateWithTimeout, TranslatorTimeoutError } from './zotero-translate'
 import {
@@ -195,44 +195,11 @@ async function bootstrapIntegrity(): Promise<void> {
  * Also injects a <base> element so doc.baseURI returns the original URL.
  */
 function parseHtmlAsDocument(html: string, url: string): Document {
+  // wrapDocument lives in zotero-http.ts (single source of truth for the
+  // fake-location Proxy pattern — also reused by Zotero.HTTP.processDocuments).
+  // See sandbox doc-Proxy notes in zotero-http.ts:wrapDocument.
   const realDoc = new DOMParser().parseFromString(html, 'text/html')
-  // Inject <base> so doc.baseURI returns the original URL.
-  const head = realDoc.querySelector('head') ?? realDoc.documentElement
-  const existingBase = head.querySelector('base')
-  if (existingBase === null) {
-    const baseEl = realDoc.createElement('base')
-    baseEl.href = url
-    head.insertBefore(baseEl, head.firstChild)
-  }
-  // Build a Location-shaped surface from the URL.
-  const urlObj = new URL(url)
-  const fakeLocation = {
-    href: urlObj.href,
-    origin: urlObj.origin,
-    protocol: urlObj.protocol,
-    host: urlObj.host,
-    hostname: urlObj.hostname,
-    port: urlObj.port,
-    pathname: urlObj.pathname,
-    search: urlObj.search,
-    hash: urlObj.hash,
-    toString: () => urlObj.href,
-  }
-  // Proxy the doc: intercept `.location` reads, bind methods to the
-  // real target so DOM internal-slot accesses (querySelector, etc.) work.
-  const proxy = new Proxy(realDoc, {
-    get(target: Document, prop: string | symbol): unknown {
-      if (prop === 'location') {
-        return fakeLocation
-      }
-      const value = Reflect.get(target, prop, target)
-      if (typeof value === 'function') {
-        return value.bind(target)
-      }
-      return value
-    },
-  })
-  return proxy as Document
+  return wrapDocument(realDoc, url)
 }
 
 interface RunTranslationArgs {
@@ -327,11 +294,18 @@ function wirePostMessageListener(): void {
       const reply = makeTranslateResponse({ requestId: msg.requestId, items })
       ;(event.source as Window | null)?.postMessage(reply, { targetOrigin: '*' })
     } catch (err) {
+      // BE-8-6 smoke: include stack trace + log to sandbox-side console so
+      // popup-side OffscreenClientError carries the originating framework
+      // line. Without this, debugging a translator runtime crash requires
+      // attaching DevTools to an offscreen document iframe — painful.
+      console.error('[milton-sandbox] runTranslation threw', err)
+      const message = err instanceof Error ? err.message : String(err)
+      const stack = err instanceof Error && typeof err.stack === 'string' ? err.stack : undefined
       const reply = makeTranslateResponse({
         requestId: msg.requestId,
         error: {
           code: err instanceof TranslatorTimeoutError ? 'TIMEOUT' : 'RUNTIME_ERROR',
-          message: err instanceof Error ? err.message : String(err),
+          message: stack !== undefined ? `${message}\n${stack}` : message,
         },
       })
       ;(event.source as Window | null)?.postMessage(reply, { targetOrigin: '*' })
@@ -353,12 +327,58 @@ function wireSpikeTrigger(): void {
       runTranslation({ url, translatorId: translatorIdOverride ?? ARXIV_TRANSLATOR_ID })
 }
 
+/**
+ * BE-8-6: eager-register every bundled-and-verified translator into the
+ * sandbox's in-memory registry. Without this step `findWebTranslators(url)`
+ * returns nothing until a translator is registered by URL-discovery via
+ * the runTranslation path — which means the cross-validation invariant
+ * "every bundled translator can be matched by URL inside the sandbox" is
+ * only true post-translation, not at bootstrap.
+ *
+ * The popup-side router (translator-router.ts) is the authoritative
+ * URL→UUID discovery surface for the BE-8-6 popup flow; this sandbox-side
+ * eager-register is a defense-in-depth so direct sandbox spike calls
+ * (BE-8-4 miltonRuntimeSpike) and any future sandbox-internal URL lookup
+ * don't surprise-fail.
+ *
+ * Performance: 26 RegExp compilations + 26 Map.set calls. Benchmarked
+ * during BE-8-6 dev: under 5 ms total on M2 (well under the 50 ms budget).
+ * If the bundle grows past ~200 translators and this becomes a noticeable
+ * boot-time cost, switch to lazy RegExp compilation inside
+ * `findWebTranslators(url)` per AC10 fallback.
+ */
+function eagerRegisterBundled(verifiedSet: Set<string>): void {
+  let registered = 0
+  for (const uuid of verifiedSet) {
+    const bundled = getBundledTranslator(uuid)
+    if (bundled === null) {
+      // Should be unreachable — verifiedSet only contains UUIDs that passed
+      // hash verification, and getBundledTranslator returns non-null for
+      // any UUID in the verified set. Log defensively for the canary.
+      console.warn('[milton-sandbox] verifiedSet contains uuid with no registry entry:', uuid)
+      continue
+    }
+    registerTranslator(bundled)
+    registered++
+  }
+  console.log(`[milton-sandbox] eagerly registered ${registered} bundled translators`)
+}
+
 async function bootstrapAll(): Promise<void> {
   bootstrap()
   // Integrity verify BEFORE wiring listeners so a translate-request that
   // arrives during cold-start never sees an unverified-but-callable
   // getBundledTranslator (it returns null until _setVerifiedSet runs).
   await bootstrapIntegrity()
+  // Eager-register all verified bundled translators so findWebTranslators(url)
+  // works inside the sandbox without needing a prior runTranslation call.
+  // The popup-side router (translator-router.ts) is the primary URL→UUID
+  // discovery path; this is defense-in-depth.
+  const verifiedAfterIntegrity = new Set<string>()
+  for (const uuid of listBundledTranslatorIDs()) {
+    if (getBundledTranslator(uuid) !== null) verifiedAfterIntegrity.add(uuid)
+  }
+  eagerRegisterBundled(verifiedAfterIntegrity)
   wirePostMessageListener()
   wireSpikeTrigger()
   console.log(`[milton-sandbox] ready (protocol v${PROTOCOL_VERSION})`)

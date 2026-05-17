@@ -7,7 +7,13 @@
 // Pure helpers extracted from popup.ts for unit testing.
 // Anything DOM-touching stays in popup.ts; this file is all data/logic.
 
-import type { EditableMetadata, MetadataAuthor, MetadataPrimary, TagSummary } from '../lib/types'
+import type {
+  ConnectorReferencePayload,
+  EditableMetadata,
+  MetadataAuthor,
+  MetadataPrimary,
+  TagSummary,
+} from '../lib/types'
 
 const CURRENT_YEAR = new Date().getFullYear()
 const MIN_YEAR = 1500
@@ -153,6 +159,77 @@ export function isTitleValid(editable: EditableMetadata): boolean {
 }
 
 /**
+ * BE-8-6 smoke S4 follow-up: when the user saves a page that fell all the way
+ * through to the server-fallback flow AND the server returned no academic
+ * signal (no DOI, no year, no journal — typically a plain webpage where
+ * translate.milton.so could only scrape the `<title>`), the saved reference
+ * shouldn't default to `article` with no date. Treat it as a webpage capture
+ * — set `type='website'` + `year=currentYear` so the user's library doesn't
+ * fill with dateless "article" junk when they save random pages.
+ *
+ * Why gated on `isFromServerFallback`: a client-translator that produces
+ * just a title (rare, e.g., a stripped-down translator) is still trying to
+ * extract structured data — overriding its result to `'website'` would be
+ * wrong. The server fallback is the path taken when NO translator matched
+ * the URL at all, which IS the "looks like a generic webpage" signal.
+ *
+ * User edits win: if the user manually types in a DOI or year, this helper
+ * returns the payload unchanged (the no-academic-signal check fails).
+ */
+export function applyGenericWebpageDefaults(
+  payload: ConnectorReferencePayload,
+  editable: EditableMetadata,
+  isFromServerFallback: boolean,
+): ConnectorReferencePayload {
+  // BE-8-6 smoke S4 fix: the server-translate envelope can return `undefined`
+  // for year/doi/journal even though TypeScript types them as required
+  // (string/number). `editable.year === 0` was false for undefined; the
+  // strict-equality checks meant the heuristic silently skipped on the
+  // exact case it was meant to catch (server-fallback on a generic page
+  // like example.com, where the server returns title-only). Use truthy
+  // checks — `!editable.year` covers `0`, `undefined`, `null`; `!editable.doi`
+  // covers `''`, `undefined`, `null`.
+  const looksGeneric =
+    isFromServerFallback &&
+    !editable.doi &&
+    !editable.year &&
+    !editable.journal
+  if (!looksGeneric) return payload
+  return {
+    ...payload,
+    type: 'website',
+    year: new Date().getFullYear(),
+  }
+}
+
+/**
+ * BE-8-6: shared restricted-URL guard. Used by `popup.ts:boot()` to short-circuit
+ * to `cannot-capture` and by `src/lib/page-context.ts:scrapeActiveTabHtml` to
+ * reject the chrome.scripting call before it errors. Keeping ONE definition
+ * means drift can't open between the popup gate and the scrape gate — both
+ * must reject the same URL classes.
+ *
+ * Restricted schemes:
+ *   - chrome:// / chrome-extension:// — browser-internal pages (extension
+ *     scripting forbidden by Chrome)
+ *   - about: / edge:// / brave:// — Firefox/Edge/Brave internal pages
+ *   - file:// — local files; extensions need explicit "Allow access to file
+ *     URLs" toggle the user controls. Treat as unsupported by default.
+ */
+export function isRestrictedUrl(url: string): boolean {
+  if (url.length === 0) return true
+  const lower = url.toLowerCase()
+  return (
+    lower.startsWith('chrome://') ||
+    lower.startsWith('chrome-extension://') ||
+    lower.startsWith('about:') ||
+    lower.startsWith('edge://') ||
+    lower.startsWith('brave://') ||
+    lower.startsWith('file://')
+  )
+}
+
+/**
  * BE-7: detect whether the active tab is itself a PDF document.
  *
  * Two signals, in order of preference:
@@ -173,25 +250,49 @@ export function detectPdfPage(url: string, mimeType?: string): boolean {
   if (mimeType === 'application/pdf') return true
   if (!url) return false
   // Reject restricted-URL schemes defensively (popup boot already blocks these,
-  // but the helper is exported and must be safe to call standalone).
-  const lower = url.toLowerCase()
-  if (
-    lower.startsWith('chrome://') ||
-    lower.startsWith('chrome-extension://') ||
-    lower.startsWith('about:') ||
-    lower.startsWith('edge://') ||
-    lower.startsWith('brave://') ||
-    lower.startsWith('file://')
-  ) {
-    return false
-  }
+  // but the helper is exported and must be safe to call standalone). Reuses
+  // the shared `isRestrictedUrl` so the two definitions can't drift.
+  if (isRestrictedUrl(url)) return false
   // Strip query (`?...`) and fragment (`#...`) before suffix-checking so URLs
   // like `https://host/paper.pdf?download=true` flag correctly.
+  const lower = url.toLowerCase()
   const queryIdx = lower.indexOf('?')
   const hashIdx = lower.indexOf('#')
   const cutAt = [queryIdx, hashIdx].filter((i) => i >= 0).reduce((a, b) => Math.min(a, b), lower.length)
   const path = lower.slice(0, cutAt)
   return path.endsWith('.pdf')
+}
+
+/**
+ * BE-8-6 code-review fix (H3): the boot-time routing decision extracted as a
+ * pure helper so the four branches (cannot-capture/PDF-server/no-candidates/
+ * client) can be unit-tested without standing up the whole popup module.
+ * BE-7's PDF-page regression coverage lives here now.
+ */
+export type BootRoute =
+  | { kind: 'cannot-capture'; reason: 'no-url' | 'restricted-url' }
+  | { kind: 'pdf-server' }
+  | { kind: 'no-candidates-server' }
+  | { kind: 'client-translator' }
+
+export function decideBootRoute(args: {
+  url: string | undefined
+  mimeType?: string
+  candidateIds: string[]
+}): BootRoute {
+  if (!args.url || args.url === 'about:blank') {
+    return { kind: 'cannot-capture', reason: 'no-url' }
+  }
+  if (isRestrictedUrl(args.url)) {
+    return { kind: 'cannot-capture', reason: 'restricted-url' }
+  }
+  if (detectPdfPage(args.url, args.mimeType)) {
+    return { kind: 'pdf-server' }
+  }
+  if (args.candidateIds.length === 0) {
+    return { kind: 'no-candidates-server' }
+  }
+  return { kind: 'client-translator' }
 }
 
 export const POPUP_HELPERS_CONSTANTS = {

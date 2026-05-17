@@ -20,8 +20,14 @@ export default defineConfig({
       // the sandbox iframe and pre-fetches the URL (extension origin,
       // host_permissions apply, no CORS). Not declared in manifest; users
       // navigate directly via chrome-extension://<id>/src/translator-runtime/spike-page.html
+      //
+      // BE-8-6 offscreen document — production parent of the sandbox iframe.
+      // Not declared in manifest; instantiated at runtime via
+      // chrome.offscreen.createDocument({url: 'src/offscreen/offscreen.html'}).
+      // Must be a rollup input so CRXJS includes it in dist/.
       input: {
         'spike-page': 'src/translator-runtime/spike-page.html',
+        offscreen: 'src/offscreen/offscreen.html',
       },
     },
   },

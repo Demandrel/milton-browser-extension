@@ -8,17 +8,21 @@ import { describe, expect, it } from 'vitest'
 import { mapMetadataToPayload } from '../lib/metadata-to-payload'
 import type { EditableMetadata, MetadataAuthor, MetadataPrimary, TagSummary } from '../lib/types'
 import {
+  applyGenericWebpageDefaults,
   blankEditable,
+  decideBootRoute,
   decideTagInputEnter,
   detectPdfPage,
   editableToMapperInput,
   filterTagSuggestions,
   formatAuthorsDisplay,
+  isRestrictedUrl,
   isTitleValid,
   joinAuthors,
   metadataToEditable,
   parseYearInput,
 } from './popup-helpers'
+import type { ConnectorReferencePayload } from '../lib/types'
 
 // ── joinAuthors ────────────────────────────────────────────────────────────
 
@@ -426,5 +430,240 @@ describe('isTitleValid', () => {
   it('accepts any non-whitespace title', () => {
     expect(isTitleValid({ ...base, title: 'A' })).toBe(true)
     expect(isTitleValid({ ...base, title: '  Trimmed Out Edges  ' })).toBe(true)
+  })
+})
+
+// ── isRestrictedUrl (BE-8-6 — shared with page-context) ────────────────────
+
+describe('isRestrictedUrl', () => {
+  it('rejects empty string', () => {
+    expect(isRestrictedUrl('')).toBe(true)
+  })
+  it('rejects chrome://', () => {
+    expect(isRestrictedUrl('chrome://extensions/')).toBe(true)
+    expect(isRestrictedUrl('Chrome://Newtab/')).toBe(true) // case-insensitive
+  })
+  it('rejects chrome-extension://', () => {
+    expect(isRestrictedUrl('chrome-extension://abc/popup.html')).toBe(true)
+  })
+  it('rejects about:', () => {
+    expect(isRestrictedUrl('about:blank')).toBe(true)
+    expect(isRestrictedUrl('about:config')).toBe(true)
+  })
+  it('rejects edge://', () => {
+    expect(isRestrictedUrl('edge://extensions/')).toBe(true)
+  })
+  it('rejects brave://', () => {
+    expect(isRestrictedUrl('brave://settings')).toBe(true)
+  })
+  it('rejects file://', () => {
+    expect(isRestrictedUrl('file:///home/user/page.html')).toBe(true)
+  })
+  it('accepts https:// URLs', () => {
+    expect(isRestrictedUrl('https://arxiv.org/abs/1706.03762')).toBe(false)
+    expect(isRestrictedUrl('https://www.sciencedirect.com/article/x')).toBe(false)
+  })
+  it('accepts http://', () => {
+    expect(isRestrictedUrl('http://example.com/x')).toBe(false)
+  })
+})
+
+// ── applyGenericWebpageDefaults (BE-8-6 smoke S4 follow-up) ────────────────
+
+describe('applyGenericWebpageDefaults', () => {
+  const baseEditable: EditableMetadata = {
+    title: 'Example Domain',
+    authors: [],
+    year: 0,
+    doi: '',
+    journal: '',
+    abstract: '',
+    issued_date: '',
+    arxiv_id: '',
+    issn: '',
+    volume: '',
+    issue: '',
+    pages: '',
+  }
+  const basePayload: ConnectorReferencePayload = {
+    title: 'Example Domain',
+    authors: [],
+    tagIds: [],
+    newTagNames: [],
+    projectIds: [],
+    collectionIds: [],
+  }
+  const currentYear = new Date().getFullYear()
+
+  it('overrides to website + current year when server-fallback + no academic signal', () => {
+    const out = applyGenericWebpageDefaults(basePayload, baseEditable, true)
+    expect(out.type).toBe('website')
+    expect(out.year).toBe(currentYear)
+    expect(out.title).toBe('Example Domain')
+  })
+
+  it('does NOT override when called from client-translator path', () => {
+    const out = applyGenericWebpageDefaults(basePayload, baseEditable, false)
+    expect(out).toBe(basePayload) // returned reference unchanged
+    expect(out.type).toBeUndefined()
+    expect(out.year).toBeUndefined()
+  })
+
+  it('does NOT override when user provided a DOI', () => {
+    const out = applyGenericWebpageDefaults(
+      basePayload,
+      { ...baseEditable, doi: '10.1234/x' },
+      true,
+    )
+    expect(out.type).toBeUndefined()
+  })
+
+  it('does NOT override when user provided a year', () => {
+    const out = applyGenericWebpageDefaults(basePayload, { ...baseEditable, year: 2024 }, true)
+    expect(out.type).toBeUndefined()
+  })
+
+  it('does NOT override when user provided a journal', () => {
+    const out = applyGenericWebpageDefaults(
+      basePayload,
+      { ...baseEditable, journal: 'Nature' },
+      true,
+    )
+    expect(out.type).toBeUndefined()
+  })
+
+  it('preserves other payload fields when overriding', () => {
+    const payloadWithTags: ConnectorReferencePayload = {
+      ...basePayload,
+      tagIds: ['t1'],
+      newTagNames: ['new-tag'],
+      url: 'https://example.com',
+    }
+    const out = applyGenericWebpageDefaults(payloadWithTags, baseEditable, true)
+    expect(out.tagIds).toEqual(['t1'])
+    expect(out.newTagNames).toEqual(['new-tag'])
+    expect(out.url).toBe('https://example.com')
+    expect(out.type).toBe('website')
+  })
+})
+
+// detectPdfPage should still pass through to isRestrictedUrl — make the
+// refactor's no-regression guarantee explicit.
+describe('detectPdfPage · isRestrictedUrl integration', () => {
+  it('rejects file:// URLs (delegated to isRestrictedUrl)', () => {
+    expect(detectPdfPage('file:///home/u/paper.pdf', undefined)).toBe(false)
+  })
+  it('rejects brave:// URLs', () => {
+    expect(detectPdfPage('brave://newtab', 'application/pdf')).toBe(true) // mimeType wins (signal 1)
+  })
+  it('still accepts mimeType=application/pdf on a real URL', () => {
+    expect(detectPdfPage('https://arxiv.org/pdf/1706.03762.pdf', 'application/pdf')).toBe(true)
+  })
+})
+
+// ── decideBootRoute (BE-8-6 code-review H3 fix) ────────────────────────────
+//
+// Pure helper that mirrors popup.ts:boot() routing. The PDF branch in
+// particular is the BE-7 regression check that AC15 S6 was supposed to cover
+// manually but was deferred — automating it here so the path is covered.
+
+describe('decideBootRoute', () => {
+  it('routes undefined URL to cannot-capture/no-url', () => {
+    expect(decideBootRoute({ url: undefined, candidateIds: [] })).toEqual({
+      kind: 'cannot-capture',
+      reason: 'no-url',
+    })
+  })
+
+  it('routes empty URL to cannot-capture/no-url', () => {
+    expect(decideBootRoute({ url: '', candidateIds: [] })).toEqual({
+      kind: 'cannot-capture',
+      reason: 'no-url',
+    })
+  })
+
+  it('routes about:blank to cannot-capture/no-url', () => {
+    expect(decideBootRoute({ url: 'about:blank', candidateIds: [] })).toEqual({
+      kind: 'cannot-capture',
+      reason: 'no-url',
+    })
+  })
+
+  it('routes chrome:// URLs to cannot-capture/restricted-url', () => {
+    expect(decideBootRoute({ url: 'chrome://extensions/', candidateIds: [] })).toEqual({
+      kind: 'cannot-capture',
+      reason: 'restricted-url',
+    })
+  })
+
+  it('routes file:// URLs to cannot-capture/restricted-url', () => {
+    expect(decideBootRoute({ url: 'file:///home/u/x.html', candidateIds: [] })).toEqual({
+      kind: 'cannot-capture',
+      reason: 'restricted-url',
+    })
+  })
+
+  // ── BE-7 PDF regression coverage (replaces deferred AC15 S6 manual smoke) ─
+
+  it('routes a PDF tab (mimeType signal) to pdf-server even with candidates', () => {
+    // arxiv-org translator MATCHES arxiv pdf URLs (via target regex), but
+    // PDF detection must short-circuit to server flow so BE-7's pdfUrl payload
+    // path runs (the connector downloads the binary server-side).
+    expect(
+      decideBootRoute({
+        url: 'https://arxiv.org/pdf/2303.08774.pdf',
+        mimeType: 'application/pdf',
+        candidateIds: ['arxiv-org'],
+      }),
+    ).toEqual({ kind: 'pdf-server' })
+  })
+
+  it('routes a PDF tab (URL suffix only) to pdf-server', () => {
+    expect(
+      decideBootRoute({
+        url: 'https://arxiv.org/pdf/2303.08774.pdf',
+        candidateIds: ['arxiv-org'],
+      }),
+    ).toEqual({ kind: 'pdf-server' })
+  })
+
+  it('routes PDF served at non-.pdf URL to pdf-server via mimeType signal', () => {
+    expect(
+      decideBootRoute({
+        url: 'https://example.com/download?file=paper',
+        mimeType: 'application/pdf',
+        candidateIds: [],
+      }),
+    ).toEqual({ kind: 'pdf-server' })
+  })
+
+  // ── client-vs-server routing ──────────────────────────────────────────────
+
+  it('routes HTML page with no candidates to no-candidates-server', () => {
+    expect(
+      decideBootRoute({
+        url: 'https://example.com',
+        candidateIds: [],
+      }),
+    ).toEqual({ kind: 'no-candidates-server' })
+  })
+
+  it('routes HTML page with candidates to client-translator', () => {
+    expect(
+      decideBootRoute({
+        url: 'https://www.sciencedirect.com/science/article/pii/S0140673624000010',
+        candidateIds: ['sciencedirect'],
+      }),
+    ).toEqual({ kind: 'client-translator' })
+  })
+
+  it('prefers cannot-capture over PDF detection (restricted PDF on file://)', () => {
+    expect(
+      decideBootRoute({
+        url: 'file:///home/u/paper.pdf',
+        mimeType: 'application/pdf',
+        candidateIds: [],
+      }),
+    ).toEqual({ kind: 'cannot-capture', reason: 'restricted-url' })
   })
 })

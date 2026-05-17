@@ -6,20 +6,39 @@
 
 import { createReference, health, listSelectors } from '../lib/connector-client'
 import { mapMetadataToPayload } from '../lib/metadata-to-payload'
+import {
+  OffscreenClientError,
+  cancelClientTranslation,
+  ensureOffscreenDocument,
+  requestClientTranslation,
+} from '../lib/offscreen-client'
+import { scrapeActiveTabHtml, PageContextError } from '../lib/page-context'
 import { extractMetadata } from '../lib/translation-client'
+import {
+  mapZoteroItemToPayload,
+  type ZoteroItemForMapping,
+} from '../lib/zotero-item-to-payload'
 import type {
   CollectionSummary,
+  ConnectorAuthor,
   ConnectorReferencePayload,
   CreateReferenceResult,
   EditableMetadata,
+  MetadataAuthor,
   MetadataPrimary,
   ProjectSummary,
   TagSummary,
   TokenFetchResult,
   TranslateError,
 } from '../lib/types'
+import { findCandidateTranslatorIds } from '../translator-runtime/translator-router'
+import { listBundledTranslators } from '../translator-runtime/translator-bundle'
+import { fetchManifest } from '../translator-runtime/translator-fetcher'
+import type { ZoteroItem } from '../translator-runtime/zotero-types'
 import {
+  applyGenericWebpageDefaults,
   blankEditable,
+  decideBootRoute,
   decideTagInputEnter,
   detectPdfPage,
   editableToMapperInput,
@@ -75,6 +94,11 @@ type AddToView = 'collections' | 'projects'
 // (→ payload.newTagNames). The two payload arrays are derived at save time.
 type SelectedTag = { kind: 'existing'; id: string } | { kind: 'new'; name: string }
 
+// BE-8-6: provenance of the populated metadata. Drives the "Extracted by X"
+// caption row in the preview. `instant-save` is the BE-1 "user saved before
+// the fetch completed" branch — no caption shown.
+type MetadataSource = 'client-translator' | 'server-translate' | 'instant-save'
+
 interface PreviewState {
   kind: 'preview'
   url: string
@@ -92,13 +116,34 @@ interface PreviewState {
   addToView: AddToView
   addToSearch: string
   edit: EditField
+  // BE-8-6: provenance label for the metadata-source caption row.
+  // 'client-translator' shows "Extracted by <publisher> translator".
+  // 'server-translate' shows "Extracted by Milton translation service".
+  // 'instant-save' suppresses the caption.
+  metadataSource: MetadataSource
+  // Optional publisher / translator label for the caption ("ScienceDirect",
+  // "arXiv.org", etc.). Only meaningful when metadataSource = 'client-translator'.
+  metadataSourceLabel?: string
 }
 
+// BE-8-6: three new states for the client-side translator path.
+// `translator-running`: chrome.scripting → sandbox translation in flight.
+//   Shown 1-15s typically. Cancel button bound to translatorAbort.abort().
+// `translator-done`: flash "Found N items via X" for ~800ms before
+//   transitioning to preview. Charter v2 names this a state; making it
+//   user-visible (not zero-tick transient) gives confirmation + feels
+//   right.
+// `translator-fallback`: brief loader while extractMetadata(url) runs
+//   as recovery. Auto-transitions to preview or error states via the
+//   existing dispatchTranslateServerError machinery.
 type State =
   | { kind: 'loading-tab' }
   | { kind: 'loading-health' }
   | { kind: 'cannot-capture'; reason: 'restricted-url' | 'no-url' }
   | { kind: 'milton-not-running' }
+  | { kind: 'translator-running'; url: string; publisherLabel: string; translatorId: string }
+  | { kind: 'translator-done'; itemCount: number; publisherLabel: string }
+  | { kind: 'translator-fallback'; reason: TranslatorFallbackReason }
   | PreviewState
   | { kind: 'posting'; payload: ConnectorReferencePayload }
   | { kind: 'success'; id: string }
@@ -114,6 +159,15 @@ type State =
   | { kind: 'error-tier-required'; requiredTiers: string[]; upgradeUrl: string }
   | { kind: 'error-service-unavailable'; retryAfterSeconds?: number }
 
+type TranslatorFallbackReason =
+  | 'no-match'
+  | 'translator-error'
+  | 'translator-timeout'
+  | 'no-items'
+  | 'html-scrape-failed'
+
+const TRANSLATOR_DONE_FLASH_MS = 800
+
 const root = document.getElementById('root') as HTMLDivElement
 let state: State = { kind: 'loading-tab' }
 let currentUrl: string | undefined
@@ -124,11 +178,23 @@ let currentTabTitle: string | undefined
 // to decide whether the page IS a PDF; when true, save() sends `pdfUrl` so
 // the Milton connector can fetch + attach the binary server-side.
 let currentTabMimeType: string | undefined
+// BE-8-6: the active tab's id — needed for chrome.scripting.executeScript
+// against the rendered DOM (Class 3 capture). Captured at boot from
+// chrome.tabs.query so the rest of the flow doesn't re-query.
+let currentTabId: number | undefined
+
+// BE-8-6: AbortController for the in-flight client-side translation request.
+// The popup-side timeout + the user closing the popup both trigger abort.
+// chrome.runtime.sendMessage doesn't accept AbortSignal natively (the offscreen
+// translation keeps running and its reply is silently dropped); this only
+// aborts the LOCAL Promise wrapper in offscreen-client.requestClientTranslation.
+let translatorAbort: AbortController | null = null
+let translatorRequestId: string | null = null
 
 void boot()
 
 async function boot() {
-  // AC2 — read current tab URL.
+  // AC2 — read current tab URL + id (BE-8-6 needs tabId for chrome.scripting).
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true })
   const url = tabs[0]?.url
   currentTabTitle = tabs[0]?.title
@@ -136,36 +202,81 @@ async function boot() {
   // Field declared via local augmentation in `src/chrome-augment.d.ts`
   // (the pinned `@types/chrome` doesn't surface it yet).
   currentTabMimeType = tabs[0]?.mimeType
-  if (!url || url === 'about:blank') {
-    setState({ kind: 'cannot-capture', reason: 'no-url' })
-    return
-  }
-  if (
-    url.startsWith('chrome://') ||
-    url.startsWith('chrome-extension://') ||
-    url.startsWith('about:') ||
-    url.startsWith('edge://') ||
-    url.startsWith('brave://')
-  ) {
-    setState({ kind: 'cannot-capture', reason: 'restricted-url' })
+  // BE-8-6: capture tab id for chrome.scripting.executeScript.
+  currentTabId = tabs[0]?.id
+
+  // Pre-flight URL routing (no-URL + restricted-URL guards). Candidate
+  // discovery requires a valid URL, so it runs AFTER this branch.
+  const preRoute = decideBootRoute({ url, mimeType: currentTabMimeType, candidateIds: [] })
+  if (preRoute.kind === 'cannot-capture') {
+    setState({ kind: 'cannot-capture', reason: preRoute.reason })
     return
   }
   currentUrl = url
 
   // AC3 — health probe gates the preview state.
+  // BE-8-6: parallel with ensureOffscreenDocument so the offscreen cold-start
+  // (~500-1500ms) hides behind the localhost health probe; by the time we'd
+  // ever call requestClientTranslation, the offscreen iframe is warm.
   setState({ kind: 'loading-health' })
-  const h = await health()
+  const [h] = await Promise.all([health(), ensureOffscreenSafe()])
   if (!h.ok) {
     setState({ kind: 'milton-not-running' })
     return
   }
 
-  // Enter preview state with both loaders running concurrently.
+  // BE-8-6: client-first decision tree. PDF page → straight to server (BE-7
+  // pdfUrl path preserved). No translator candidates → straight to server
+  // (no translator-running flash). Candidates available → try client first;
+  // on success → preview; on miss → translator-fallback → server.
+  // Router lookup happens before the final route decision so the helper sees
+  // the real candidate list (decideBootRoute is pure; routing logic ≡ helper).
+  let candidateIds: string[] = []
+  // For PDF pages we skip router entirely (perf + BE-7 parity); else look up.
+  if (!detectPdfPage(url!, currentTabMimeType)) {
+    try {
+      candidateIds = await findCandidateTranslatorIds(url!)
+    } catch (err) {
+      console.warn('[milton-popup] router failure; falling back to server', err)
+    }
+  }
+  const route = decideBootRoute({ url, mimeType: currentTabMimeType, candidateIds })
+  switch (route.kind) {
+    case 'pdf-server':
+      enterServerFlow(url!)
+      return
+    case 'no-candidates-server':
+      console.log('[milton-popup] translator-fallback reason=no-match')
+      enterServerFlow(url!)
+      return
+    case 'client-translator':
+      await tryClientTranslator(url!, candidateIds)
+      return
+    case 'cannot-capture':
+      // Unreachable: pre-route caught this. Defensive.
+      setState({ kind: 'cannot-capture', reason: route.reason })
+      return
+  }
+}
+
+/**
+ * BE-8-6: enter the "preview + concurrent loaders" state that BE-1 set up.
+ * Extracted from the original boot() so both the client-translator-hit
+ * path AND the server-fallback path can share it. `populateFromSource` is
+ * called once metadata is known: it patches the preview state with the
+ * EditableMetadata + the metadata-source label.
+ */
+function enterPreviewState(args: {
+  url: string
+  metadataSource: MetadataSource
+  metadataSourceLabel?: string
+  initialMetadata: MetadataLoad
+}): void {
   setState({
     kind: 'preview',
-    url,
+    url: args.url,
     activeTab: 'main',
-    metadata: { kind: 'loading' },
+    metadata: args.initialMetadata,
     selectors: { kind: 'loading' },
     selectedTags: [],
     selectedProjectIds: [],
@@ -175,24 +286,11 @@ async function boot() {
     addToView: 'collections',
     addToSearch: '',
     edit: null,
+    metadataSource: args.metadataSource,
+    metadataSourceLabel: args.metadataSourceLabel,
   })
-
-  // Fire both fetches in parallel. Per BE-4 Pierre observation, metadata can
-  // take seconds; selectors are sub-ms localhost. As each resolves we patch
-  // the preview state. If metadata fails fatally we transition out of preview.
-  void extractMetadata(url).then((result) => {
-    if (state.kind !== 'preview') return // user moved on (clicked retry, etc.)
-    if (result.ok) {
-      patchPreview({ metadata: { kind: 'ready', editable: metadataToEditable(result.primary) } })
-      return
-    }
-    if (result.via === 'token-mint') {
-      dispatchTokenMintError(result.error)
-    } else {
-      dispatchTranslateServerError(result.error)
-    }
-  })
-
+  // Selectors fire concurrently — same pattern as BE-1, no client/server
+  // branching.
   void listSelectors().then((sel) => {
     if (state.kind !== 'preview') return
     if (sel.ok) {
@@ -210,7 +308,6 @@ async function boot() {
       setState({ kind: 'signed-out' })
       return
     }
-    // partial-failure: keep preview, degrade affected sections
     patchPreview({
       selectors: {
         kind: 'partial',
@@ -220,6 +317,217 @@ async function boot() {
       },
     })
   })
+}
+
+/**
+ * BE-8-6: server-side translation flow (the pre-BE-8-6 path, preserved
+ * verbatim). Invoked when (a) the page is a PDF, (b) no client translator
+ * matches, OR (c) the client translator failed/timed-out/returned 0 items.
+ */
+function enterServerFlow(url: string): void {
+  enterPreviewState({
+    url,
+    metadataSource: 'server-translate',
+    initialMetadata: { kind: 'loading' },
+  })
+  void extractMetadata(url).then((result) => {
+    if (state.kind !== 'preview') return
+    if (result.ok) {
+      patchPreview({
+        metadata: { kind: 'ready', editable: metadataToEditable(result.primary) },
+      })
+      return
+    }
+    if (result.via === 'token-mint') {
+      dispatchTokenMintError(result.error)
+    } else {
+      dispatchTranslateServerError(result.error)
+    }
+  })
+}
+
+/**
+ * BE-8-6: client-side translation flow. Scrapes the active tab's rendered
+ * DOM via chrome.scripting (past any Cloudflare/Anubis bot check the user's
+ * session has cleared), forwards to the offscreen sandbox, awaits items,
+ * transitions to preview on success OR translator-fallback → server on
+ * miss/error.
+ */
+async function tryClientTranslator(url: string, candidateIds: string[]): Promise<void> {
+  const translatorId = candidateIds[0]
+  const publisherLabel = await lookupPublisherLabel(translatorId)
+  setState({ kind: 'translator-running', url, publisherLabel, translatorId })
+
+  // Scrape rendered HTML from the active tab.
+  let scraped: { html: string; finalUrl: string }
+  if (currentTabId === undefined) {
+    console.warn('[milton-popup] no tabId; cannot scrape — falling back to server')
+    transitionToFallback(url, 'html-scrape-failed')
+    return
+  }
+  try {
+    scraped = await scrapeActiveTabHtml(currentTabId, url)
+  } catch (err) {
+    const code = err instanceof PageContextError ? err.code : 'UNKNOWN'
+    console.warn(`[milton-popup] html scrape failed (${code}); translator-fallback`, err)
+    transitionToFallback(url, 'html-scrape-failed')
+    return
+  }
+
+  // Fire client translation via offscreen.
+  translatorAbort = new AbortController()
+  translatorRequestId = crypto.randomUUID()
+  let items: ZoteroItem[]
+  try {
+    items = await requestClientTranslation({
+      url,
+      html: scraped.html,
+      translatorId,
+      requestId: translatorRequestId,
+      signal: translatorAbort.signal,
+    })
+  } catch (err) {
+    const code = err instanceof OffscreenClientError ? err.code : 'UNKNOWN'
+    console.warn(`[milton-popup] client translator failed (${code}); translator-fallback`, err)
+    transitionToFallback(
+      url,
+      code === 'POPUP_TIMEOUT' || code === 'OFFSCREEN_TIMEOUT' ? 'translator-timeout' : 'translator-error',
+    )
+    return
+  } finally {
+    translatorAbort = null
+    translatorRequestId = null
+  }
+  if (items.length === 0) {
+    console.log('[milton-popup] translator-fallback reason=no-items')
+    transitionToFallback(url, 'no-items')
+    return
+  }
+
+  // Translation succeeded — flash translator-done state, then enter preview.
+  setState({ kind: 'translator-done', itemCount: items.length, publisherLabel })
+  window.setTimeout(() => {
+    if (state.kind !== 'translator-done') return
+    const editable = zoteroItemToEditable(items[0], url)
+    enterPreviewState({
+      url,
+      metadataSource: 'client-translator',
+      metadataSourceLabel: publisherLabel,
+      initialMetadata: { kind: 'ready', editable },
+    })
+  }, TRANSLATOR_DONE_FLASH_MS)
+}
+
+function transitionToFallback(url: string, reason: TranslatorFallbackReason): void {
+  console.log(`[milton-popup] translator-fallback reason=${reason}`)
+  setState({ kind: 'translator-fallback', reason })
+  // Brief fallback indicator before invoking server flow. Use a microtask so
+  // the fallback render flashes; server flow then re-renders into preview/error.
+  queueMicrotask(() => {
+    if (state.kind === 'translator-fallback') enterServerFlow(url)
+  })
+}
+
+/**
+ * BE-8-6: best-effort label lookup for the translator-running / translator-done
+ * caption. Tries the bundled registry first (synchronous); on miss falls
+ * back to the cached manifest. Returns 'translator' as the ultimate fallback
+ * so the UI never shows an undefined string.
+ */
+async function lookupPublisherLabel(translatorId: string): Promise<string> {
+  for (const t of listBundledTranslators()) {
+    if (t.metadata.translatorID === translatorId) return t.metadata.label
+  }
+  try {
+    const manifest = await fetchManifest()
+    const entry = manifest.translators.find((e) => e.translatorID === translatorId)
+    if (entry !== undefined) return entry.label
+  } catch {
+    // ignore — fall through to default
+  }
+  return 'translator'
+}
+
+/**
+ * BE-8-6: adapt a ZoteroItem to the popup's EditableMetadata shape. Goes
+ * through `mapZoteroItemToPayload` first so the connector-bound mapping is
+ * the single source of truth, then re-derives the EditableMetadata fields
+ * (which carry author tuples + the journal/issn/volume/issue/pages fields
+ * that aren't in the payload mapper output).
+ */
+function zoteroItemToEditable(item: ZoteroItem, fallbackUrl: string): EditableMetadata {
+  const itemForMap: ZoteroItemForMapping = item as ZoteroItemForMapping
+  const payload = mapZoteroItemToPayload(itemForMap, fallbackUrl)
+  const authors: MetadataAuthor[] = payload.authors.map((a: ConnectorAuthor) => {
+    if ('fullName' in a) {
+      // The mapper preserves fullName authors; split heuristically for
+      // EditableMetadata's first/last shape. Take the last space-separated
+      // token as `last`, the rest as `first`.
+      const parts = a.fullName.split(/\s+/)
+      if (parts.length === 1) return { first: '', last: parts[0] }
+      return { first: parts.slice(0, -1).join(' '), last: parts[parts.length - 1] }
+    }
+    return { first: a.firstName ?? '', last: a.lastName ?? '' }
+  })
+  return {
+    title: payload.title,
+    authors,
+    year: payload.year ?? 0,
+    doi: payload.doi ?? '',
+    journal: typeof item.publicationTitle === 'string' ? item.publicationTitle : '',
+    abstract: payload.abstract ?? '',
+    issued_date: typeof item.date === 'string' ? item.date : '',
+    arxiv_id: typeof item.archiveID === 'string' ? item.archiveID : '',
+    issn: typeof item.ISSN === 'string' ? item.ISSN : '',
+    volume: typeof item.volume === 'string' ? item.volume : '',
+    issue: typeof item.issue === 'string' ? item.issue : '',
+    pages: typeof item.pages === 'string' ? item.pages : '',
+  }
+}
+
+/**
+ * BE-8-6: ensureOffscreenDocument wrapper that swallows errors. Failure to
+ * create the offscreen doc isn't fatal — the popup falls back to the server
+ * flow on the next decision branch. We only WARN; the popup still boots.
+ */
+async function ensureOffscreenSafe(): Promise<void> {
+  try {
+    await ensureOffscreenDocument()
+  } catch (err) {
+    console.warn('[milton-popup] offscreen-document ensure failed; client translator disabled', err)
+  }
+}
+
+// BE-8-6: best-effort cancel on popup close. Per AC13, beforeunload isn't
+// guaranteed to fire AND chrome.runtime.sendMessage is async (may not deliver
+// before the popup window dies). The offscreen-side 10s timeout is the real
+// abort gate; this is just a hint so the offscreen drops a reply destined
+// for our dead sendResponse channel.
+window.addEventListener('beforeunload', () => {
+  if (translatorAbort !== null) translatorAbort.abort()
+  if (translatorRequestId !== null) cancelClientTranslation(translatorRequestId)
+})
+
+// BE-8-6: dev-only console hook for driving the full popup → offscreen → sandbox
+// flow without needing to open a real publisher page. Gated by Vite's
+// `import.meta.env.DEV` — stripped from production builds. Hook lifetime is
+// bound to the popup window; pin DevTools (right-click toolbar → Inspect popup)
+// to keep `window.miltonPopupSpike` available across actions.
+if (import.meta.env.DEV) {
+  ;(window as Window & { miltonPopupSpike?: (url: string) => Promise<{ source: string; items?: ZoteroItem[] }> }).miltonPopupSpike =
+    async (url: string) => {
+      const candidates = await findCandidateTranslatorIds(url)
+      if (candidates.length === 0) return { source: 'no-match' }
+      const resp = await fetch(url, { credentials: 'omit' })
+      const html = await resp.text()
+      const items = await requestClientTranslation({
+        url,
+        html,
+        translatorId: candidates[0],
+        requestId: crypto.randomUUID(),
+      })
+      return { source: 'client-translator', items }
+    }
 }
 
 function setState(next: State): void {
@@ -261,6 +569,28 @@ function render(): void {
         <p class="milton-popup-footnote">Don't have Milton? <a href="https://milton.so" target="_blank" rel="noopener">Get it here</a>.</p>
       `
       bind('open-milton', openMilton)
+      break
+
+    case 'translator-running':
+      root.innerHTML = `
+        <p class="milton-popup-loading">Extracting metadata via ${escapeHtml(state.publisherLabel)}…</p>
+        <button class="milton-popup-button milton-popup-button-secondary" id="cancel-translator">Cancel</button>
+      `
+      bind('cancel-translator', () => {
+        if (translatorAbort !== null) translatorAbort.abort()
+      })
+      break
+
+    case 'translator-done':
+      root.innerHTML = `
+        <p class="milton-popup-loading">Found ${state.itemCount} item${state.itemCount === 1 ? '' : 's'} via ${escapeHtml(state.publisherLabel)}.</p>
+      `
+      break
+
+    case 'translator-fallback':
+      root.innerHTML = `
+        <p class="milton-popup-loading">Trying Milton's translation service…</p>
+      `
       break
 
     case 'preview':
@@ -562,6 +892,11 @@ function renderPreviewMetadata(s: PreviewState): string {
   }
   const e = s.metadata.editable
   const rows: string[] = []
+  // BE-8-6: metadata-source caption row. Always rendered for client-translator
+  // and server-translate paths (suppressed for instant-save where the user
+  // didn't wait for any fetch).
+  const caption = renderMetadataSourceCaption(s)
+  if (caption.length > 0) rows.push(caption)
   // Figma rows: Title (no label, big) → Author(s) → Date → Abstract. Journal
   // and DOI are no longer displayed (Pierre 2026-05-14) — the Figma frame has
   // neither, and dropping them keeps the preview card a fixed height that
@@ -593,6 +928,23 @@ function renderPreviewMetadata(s: PreviewState): string {
     )
   }
   return `<div class="milton-popup-preview">${rows.join('\n')}</div>`
+}
+
+/**
+ * BE-8-6: render the "Extracted by X" caption row above the title. Suppressed
+ * for the instant-save branch (BE-1 — user saved before any fetch completed).
+ * Returns empty string when no caption should render.
+ */
+function renderMetadataSourceCaption(s: PreviewState): string {
+  if (s.metadataSource === 'instant-save') return ''
+  if (s.metadata.kind !== 'ready') return ''
+  let label: string
+  if (s.metadataSource === 'client-translator') {
+    label = `Extracted by ${escapeHtml(s.metadataSourceLabel ?? 'translator')} translator`
+  } else {
+    label = 'Extracted by Milton translation service'
+  }
+  return `<p class="milton-popup-source-caption">${label}</p>`
 }
 
 function renderTitleRow(e: EditableMetadata, editing: boolean): string {
@@ -1242,7 +1594,7 @@ async function save(): Promise<void> {
   const collectionIds = [...state.selectedCollectionIds]
 
   // Build the payload via the mapper, then assign the four selector arrays.
-  const payload = mapMetadataToPayload(editableToMapperInput(editable), currentUrl)
+  let payload = mapMetadataToPayload(editableToMapperInput(editable), currentUrl)
   payload.tagIds = tagIds
   payload.newTagNames = newTagNames
   payload.projectIds = projectIds
@@ -1254,6 +1606,16 @@ async function save(): Promise<void> {
   if (detectPdfPage(currentUrl, currentTabMimeType)) {
     payload.pdfUrl = currentUrl
   }
+
+  // BE-8-6 smoke S4 follow-up: when the save came from the server-fallback
+  // path AND the metadata has no academic signal (no DOI / no year / no
+  // journal), treat as a webpage capture — `type='website'` + today's year.
+  // User-edited DOI/year/journal disables the override.
+  payload = applyGenericWebpageDefaults(
+    payload,
+    editable,
+    state.metadataSource === 'server-translate',
+  )
 
   setState({ kind: 'posting', payload })
   const result = await createReference(payload)

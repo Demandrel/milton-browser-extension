@@ -112,9 +112,14 @@ export class TranslatorMalformedError extends Error {
 import acmDigitalLibrarySource from './translators/acm-digital-library.js?raw'
 import arxivOrgSource from './translators/arxiv-org.js?raw'
 import atyponJournalsSource from './translators/atypon-journals.js?raw'
+import bibtexSource from './translators/bibtex.js?raw'
 import cambridgeCoreSource from './translators/cambridge-core.js?raw'
 import cellPressSource from './translators/cell-press.js?raw'
 import coinsSource from './translators/coins.js?raw'
+import crossrefRestSource from './translators/crossref-rest.js?raw'
+import crossrefUnixrefXmlSource from './translators/crossref-unixref-xml.js?raw'
+import cslJsonSource from './translators/csl-json.js?raw'
+import dataciteJsonSource from './translators/datacite-json.js?raw'
 import doiContentNegotiationSource from './translators/doi-content-negotiation.js?raw'
 import embeddedMetadataSource from './translators/embedded-metadata.js?raw'
 import highwireSource from './translators/highwire.js?raw'
@@ -127,7 +132,10 @@ import oxfordUniversityPressSource from './translators/oxford-university-press.j
 import projectMuseSource from './translators/project-muse.js?raw'
 import pubmedSource from './translators/pubmed.js?raw'
 import pubmedCentralSource from './translators/pubmed-central.js?raw'
+import pubmedXmlSource from './translators/pubmed-xml.js?raw'
+import rdfSource from './translators/rdf.js?raw'
 import repecIdeasSource from './translators/repec-ideas.js?raw'
+import risSource from './translators/ris.js?raw'
 import sageJournalsSource from './translators/sage-journals.js?raw'
 import sciencedirectSource from './translators/sciencedirect.js?raw'
 import springerLinkSource from './translators/springer-link.js?raw'
@@ -140,9 +148,14 @@ const REGISTRY: Record<string, BundleEntry> = {
   "acm-digital-library": { source: acmDigitalLibrarySource },
   "arxiv-org": { source: arxivOrgSource },
   "atypon-journals": { source: atyponJournalsSource },
+  "bibtex": { source: bibtexSource },
   "cambridge-core": { source: cambridgeCoreSource },
   "cell-press": { source: cellPressSource },
   "coins": { source: coinsSource },
+  "crossref-rest": { source: crossrefRestSource },
+  "crossref-unixref-xml": { source: crossrefUnixrefXmlSource },
+  "csl-json": { source: cslJsonSource },
+  "datacite-json": { source: dataciteJsonSource },
   "doi-content-negotiation": { source: doiContentNegotiationSource },
   "embedded-metadata": { source: embeddedMetadataSource },
   "highwire": { source: highwireSource },
@@ -155,7 +168,10 @@ const REGISTRY: Record<string, BundleEntry> = {
   "project-muse": { source: projectMuseSource },
   "pubmed": { source: pubmedSource },
   "pubmed-central": { source: pubmedCentralSource },
+  "pubmed-xml": { source: pubmedXmlSource },
+  "rdf": { source: rdfSource },
   "repec-ideas": { source: repecIdeasSource },
+  "ris": { source: risSource },
   "sage-journals": { source: sageJournalsSource },
   "sciencedirect": { source: sciencedirectSource },
   "springer-link": { source: springerLinkSource },
@@ -284,6 +300,28 @@ export function listBundledTranslatorIDs(): string[] {
     idIndex = buildIdIndex()
   }
   return [...idIndex.keys()]
+}
+
+/**
+ * BE-8-6: return parsed metadata for every bundled entry. Consumed by the
+ * translator-router (URL → UUID discovery) so it can match `metadata.target`
+ * regexes against the active tab URL without going through the sandbox's
+ * registry (the popup runs in a different window from the sandbox).
+ *
+ * Returns ALL bundled entries regardless of `verifiedSet` state — discovery
+ * needs to see candidate UUIDs even pre-bootstrap; the verifiedSet gate
+ * applies later when `getBundledTranslator(uuid)` is actually called.
+ */
+export function listBundledTranslators(): BundledTranslator[] {
+  if (idIndex === null) {
+    idIndex = buildIdIndex()
+  }
+  const out: BundledTranslator[] = []
+  for (const key of idIndex.values()) {
+    const parsed = REGISTRY[key].parsed
+    if (parsed !== undefined) out.push(parsed)
+  }
+  return out
 }
 
 // Test seam: reset the lazy index (called by tests that mutate REGISTRY).

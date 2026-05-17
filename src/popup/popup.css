@@ -265,6 +265,16 @@ body {
   margin: 0;
 }
 
+/* BE-8-6: "Extracted by <X>" caption row above the preview metadata. Mirrors
+   the footnote style (neutral grey, 12px) so it sits visually subordinate to
+   the title without competing with the metadata fields below. */
+.milton-popup-source-caption {
+  color: var(--milton-fg-3);
+  font-size: 12px;
+  line-height: 1.4;
+  margin: 0 0 4px;
+}
+
 .milton-popup-footnote a {
   color: var(--milton-fg-2);
   text-underline-offset: 2px;
