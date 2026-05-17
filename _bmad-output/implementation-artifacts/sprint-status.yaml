@@ -158,7 +158,7 @@ development_status:
   # bundled-vs-fetched state and gracefully falls back.
   # Medium risk. Depends on BE-8-1, BE-8-4.
   # Theme: Capture parity.
-  BE-8-5-curated-translator-bundle-and-lazy-cdn-fetch: review
+  BE-8-5-curated-translator-bundle-and-lazy-cdn-fetch: done
 
   # BE-8-6: Class 3 capture flow. Extension runs translator in page context
   # via chrome.scripting.executeScript; POSTs structured item JSON (NOT URL)

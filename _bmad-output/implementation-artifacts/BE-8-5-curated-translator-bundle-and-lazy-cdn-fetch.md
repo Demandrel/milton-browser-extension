@@ -1,6 +1,6 @@
 # Story BE-8.5: Curated translator bundle + lazy CDN-fetch
 
-Status: review
+Status: done
 
 <!-- BMad SM workflow create-story output. Method-17 hardening pass: see Change Log. -->
 
