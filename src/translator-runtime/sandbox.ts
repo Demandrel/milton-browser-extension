@@ -220,19 +220,33 @@ function parseHtmlAsDocument(html: string, url: string): Document {
   }
   // Proxy the doc: intercept `.location` reads, bind methods to the
   // real target so DOM internal-slot accesses (querySelector, etc.) work.
-  const proxy = new Proxy(realDoc, {
+  //
+  // BE-8-6 smoke fix: method-call args that are THIS proxy must be
+  // unwrapped to the real target before invocation. Translators commonly
+  // do `doc.evaluate(xpath, doc, ...)` where param 2 (contextNode) must
+  // be a real Node — the platform's Document.prototype.evaluate runs an
+  // internal-slot check that rejects Proxies with
+  // "TypeError: Failed to execute 'evaluate' on 'Document': parameter 2
+  // is not of type 'Node'". Caught by ScienceDirect smoke S2; same
+  // pattern hits any translator that uses Zotero.Utilities.xpath().
+  let proxy: Document
+  proxy = new Proxy(realDoc, {
     get(target: Document, prop: string | symbol): unknown {
       if (prop === 'location') {
         return fakeLocation
       }
       const value = Reflect.get(target, prop, target)
       if (typeof value === 'function') {
-        return value.bind(target)
+        const fn = value as (...a: unknown[]) => unknown
+        return function (this: unknown, ...args: unknown[]) {
+          const unwrapped = args.map((a) => (a === proxy ? target : a))
+          return fn.apply(target, unwrapped)
+        }
       }
       return value
     },
-  })
-  return proxy as Document
+  }) as Document
+  return proxy
 }
 
 interface RunTranslationArgs {
