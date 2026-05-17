@@ -24,7 +24,15 @@ export default defineManifest({
     '48': 'src/assets/icons/48.png',
     '128': 'src/assets/icons/128.png',
   },
-  permissions: ['activeTab'],
+  permissions: [
+    'activeTab',
+    // BE-8-5 — translator-fetcher.ts caches the manifest + lazy-fetched
+    // translators in chrome.storage.local (translator-mirror-metadata +
+    // translator-fetched:* keys; LRU-capped at 50 entries; well under the
+    // default 10 MB quota). Without this permission `chrome.storage.local`
+    // is undefined and the lazy-fetch path throws STORAGE_UNAVAILABLE.
+    'storage',
+  ],
   host_permissions: [
     'https://translate.milton.so/*',
     // BE-8-5 — extension fetches the manifest + per-translator code from the

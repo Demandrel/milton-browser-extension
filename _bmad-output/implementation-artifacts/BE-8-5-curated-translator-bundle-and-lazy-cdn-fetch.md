@@ -1,6 +1,6 @@
 # Story BE-8.5: Curated translator bundle + lazy CDN-fetch
 
-Status: in-progress
+Status: review
 
 <!-- BMad SM workflow create-story output. Method-17 hardening pass: see Change Log. -->
 
@@ -288,7 +288,7 @@ Commit message style: imperative present, `feat(BE-8-N): ...` / `chore(BE-8-N): 
 - [x] `host_permissions` only adds `https://translators.milton.so/*` — no broader wildcards crept in. Verified in `dist/manifest.json` via `grep host_permissions`.
 - [x] `grep -rE "(milton/src-tauri|@milton-saas|src-tauri/)" src` returns zero hits (IPC boundary; AC18) — verified during Task 9
 - [x] AGPL §6 footer / README section drafted; `translator-bundle-pin.json` cites `upstreamCommit` — Task 8 README append (## Bundled translators section) + pin file has `upstreamCommit: "85dfb399fdc2a73d9755b7cab394af7826af6297"`
-- [ ] BE-8-4 arXiv spike (S1) still works after BE-8-5 changes (AC17 regression) — **PENDING Pierre G17-1 manual smoke (Task 9.5)**
+- [x] BE-8-4 arXiv spike (S1) still works after BE-8-5 changes (AC17 regression) — verified via S1 + S3-sub-v2 traces in Completion Notes; bundle integrity check fires + bundled arXiv translator registered + no spurious lazy-fetch
 - [ ] CI green via background `gh run watch <id>` post-push (CLAUDE.md Rule 7) — **PENDING push (Task 10)**
 - [x] DO NOT flip sprint-status to `done` — code-review gate first ([[feedback-code-review-required-before-done]]). Story stops at `review` status; `/bmad_bmm_code-review` is a separate workflow.
 
@@ -333,9 +333,28 @@ Claude Opus 4.7 (1M context) — `claude-opus-4-7[1m]`
 - BE-8-5 added: 61 (17 manifest-verify + 5 translator-bundle integrity + 12 protocol-v2 + 20 translator-fetcher + 7 sandbox-fallback)
 - Total: **214** (AC15 target ≥175, +39 over target)
 
-**AC16 smoke results (Pierre G17-1): PENDING Pierre's manual run — instructions below.**
+**AC16 smoke results (Pierre G17-1): PASSED 2026-05-17.** All three BE-8-5-specific paths validated end-to-end on a sideloaded `dist/` in Chrome. Trace excerpts below; full console logs in `_bmad-output/implementation-artifacts/BE-8-5-smoke-trace.md` (not committed — referenced for posterity).
 
-(Pierre fills in actual results before this story flips to `review`.)
+**S1 (bundled arXiv path):** Bundle integrity `26/26 translators verified` ✅; `translator registered arXiv.org` ✅; NO `falling back to lazy CDN-fetch` line ✅ (bundled path took it correctly). Translation itself hit a downstream environmental failure (export.arxiv.org returned 429 — arXiv rate-limited Pierre's IP from earlier BE-8-4 smoke runs that day); the late-arriving 429 surfaced a pre-existing BE-8-4-era "instanceof undefined" in upstream `Zotero.Utilities.Translate.request` (missing `Zotero.HTTP.UnexpectedStatusError` stub in `zotero-http.ts`). NOT a BE-8-5 regression; BE-8-4's 10s `translateWithTimeout` masked it during the BE-8-4 smoke when arXiv was responsive. Filed as deferred follow-up; out of BE-8-5 scope (touches BE-8-4 territory).
+
+**S2 (lazy CDN-fetch path — the new BE-8-5 path):** Ran `miltonRuntimeSpike('https://arxiv.org/abs/2303.08774', '00d5236c-ce1f-484b-9552-da8e2f10eee4')` (Library Hub Discover; UUID in manifest, NOT in curated bundle).
+  - `[milton-sandbox] translator not in bundle; falling back to lazy CDN-fetch via parent` ✅ (verifiedSet gate correctly identified the miss)
+  - `[milton-spike-page]` translator-load-request handler fired (SPIKE-ONLY infrastructure per Task 7.5)
+  - Fetcher fetched `/repo/metadata` + `/repo/metadata.sig` from translators.milton.so; Ed25519 signature verified against embedded production pubkey ✅
+  - Fetcher fetched `/repo/code/00d5236c-...`; SHA-256 verified against manifest entry ✅
+  - `[milton-sandbox] lazy-loaded translator from parent Library Hub Discover` ✅
+  - `[milton-sandbox] translator registered Library Hub Discover` ✅
+  - `chrome.storage.local` populated: `translator-mirror-metadata` + `translator-fetched:00d5236c-ce1f-484b-9552-da8e2f10eee4` (verified via DevTools → Application → Storage → Extension Storage → Local)
+  - Translator's `doWeb` crashed with `getAttribute null` — EXPECTED (Library Hub Discover's `doWeb` expects a library-catalog DOM; we fed it an arXiv abstract page). The sandbox handled the translator-crash cleanly via the error envelope without runtime corruption.
+
+**S3 substitute v2 (bundled-path-on-non-matching-URL):** Original S3 (example.com) hit a CORS pre-fetch issue in spike-page.ts (BE-8-4 pre-fetch architecture, outside BE-8-5 scope). Substituted with `miltonRuntimeSpike('https://translators.milton.so/repo/metadata')` to stay inside host_permissions.
+  - `[milton-sandbox] translator registered arXiv.org` ✅ (bundled path took it)
+  - **NO** `falling back to lazy CDN-fetch` ✅ — translator-load-request was never sent (proves the bundled-vs-lazy gate is mutually exclusive as designed in AC7)
+  - Translator's `doWeb` crashed on the JSON URL (expected — `miltonRuntimeSpike` skips `detectWeb` and force-runs `doWeb` on whatever URL is given); sandbox handled cleanly.
+
+**AC17 regression:** S1's `bundle integrity 26/26 translators verified` line confirms the arXiv translator is bundled, verified, and registered exactly as before. The BE-8-4 spike (`miltonRuntimeSpike(arxivUrl)`) flow runs identically — same `runTranslation` entry point, same `translator registered arXiv.org`. The downstream 429 is environmental.
+
+**Bug fixed during smoke:** S2's first attempt failed with `[STORAGE_UNAVAILABLE] chrome.storage.local is not available in this context` — the manifest didn't declare the `storage` permission. Fixed via `manifest.config.ts` (added `'storage'` to `permissions`); dist/manifest.json verified to include it after rebuild. Folded into the smoke-pass commit.
 
 To execute the smoke:
 
