@@ -1,0 +1,68 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026  Pierre Jacquel
+#
+# Curated translator bundle for BE-8-5.
+# Format: one Zotero translatorID per line; `#`-prefixed lines are comments.
+# Slugs derive from manifest label (kebab-case, ASCII-only).
+# Manifest pin tracked in translator-bundle-pin.json (repo root).
+#
+# Refresh with:  pnpm refresh:translators
+# Pipeline verifies Ed25519 signature on /repo/metadata + per-translator
+# SHA-256 against the manifest, fail-loud on any mismatch (AC4).
+#
+# v1 list (BE-8-5; 26 translators; ~771 KB raw before gzip):
+# - Generic frameworks (5) that catch ANY academic page with OG / DOI /
+#   embedded metadata: Embedded Metadata, COinS, unAPI, DOI Content
+#   Negotiation, plus arXiv.org (the BE-8-4 spike target — kept in v1).
+# - Aggregators / platforms (3) that back ~150+ publisher sites between
+#   them: HighWire, HighWire 2.0, Atypon Journals. Including these
+#   multiplies effective publisher coverage well past the raw 26.
+# - Major academic publishers (18): Elsevier (ScienceDirect), Wiley,
+#   Springer Nature, PubMed{,Central}, SSRN, JSTOR, IEEE, ACM, SAGE,
+#   T&F+NEJM, Cell Press, OUP, Cambridge, Project MUSE, RePEc IDEAS, NBER.
+#
+# Misses from the AC2 seed (with rationale):
+#   - Mendeley (no translator in upstream — Mendeley is a reference
+#     manager, not a publisher site)
+#   - Open Graph as a standalone (covered by Embedded Metadata)
+#   - bioRxiv / medRxiv (no dedicated translators; covered by HighWire +
+#     Embedded Metadata since both run on HighWire)
+#   - EconStor (no translator in upstream)
+#   - ScienceDirect XHR (no separate variant in upstream; ScienceDirect
+#     covers both paths)
+#
+# Pierre's input: edit this file and re-run pnpm refresh:translators to
+# add/remove publishers. Refresh script is idempotent (AC14 task 9.7) —
+# re-running with the same list produces zero file changes.
+
+# ─── Generic metadata frameworks ───
+ecddda2e-4fc6-4aea-9f17-ef3b56d7377a  # arXiv.org
+b28d0d42-8549-4c6d-83fc-8382874a5cb9  # DOI Content Negotiation
+951c027d-74ac-47d4-a107-9c3069ab7b48  # Embedded Metadata
+05d07af9-105a-4572-99f6-a8e231c0daef  # COinS
+e7e01cac-1e37-4da6-b078-a0e8343b0e98  # unAPI
+
+# ─── Aggregators / platforms (high publisher multiplier) ───
+5eacdb93-20b9-4c46-a89b-523f62935ae4  # HighWire
+8c1f42d5-02fa-437b-b2b2-73afc768eb07  # HighWire 2.0
+5af42734-7cd5-4c69-97fc-bc406999bdba  # Atypon Journals
+
+# ─── Major academic publishers ───
+b6d0a7a-d076-48ae-b2f0-b6de28b194e    # ScienceDirect (Elsevier)
+fe728bc9-595a-4f03-98fc-766f1d8d0936  # Wiley Online Library
+d6c6210a-297c-4b2c-8c43-48cb503cc49e  # Springer Link
+6614a99-479a-4524-8e30-686e4d66663e   # Nature Publishing Group
+3d0231ce-fd4b-478c-b1d3-840389e5b68c  # PubMed
+27ee5b2c-2a5a-4afc-a0aa-d386642d4eed  # PubMed Central
+b61c224b-34b6-4bfd-8a76-a476e7092d43  # SSRN
+d921155f-0186-1684-615c-ca57682ced9b  # JSTOR
+92d4ed84-8d0-4d3c-941f-d4b9124cfbb    # IEEE Xplore
+f3f092bf-ae09-4be6-8855-a22ddd817925  # ACM Digital Library
+908c1ca2-59b6-4ad8-b026-709b7b927bda  # SAGE Journals
+dac476e4-401d-430a-8571-a97c31c3b65e  # Taylor and Francis+NEJM
+f26cfb71-efd7-47ae-a28c-d4d8852096bd  # Cell Press
+e9989043-fcdf-4f33-93b6-0381828aeb41  # Oxford University Press
+850f4c5f-71fb-4669-b7da-7fb7a95500ef  # Cambridge Core
+c54d1932-73ce-dfd4-a943-109380e06574  # Project MUSE
+bd2e6136-d8e5-4f76-906b-0fbcd888dd63  # RePEc - IDEAS
+99f958ab-0732-483d-833f-6bd8e42f6277  # National Bureau of Economic Research

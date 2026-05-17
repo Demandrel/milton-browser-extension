@@ -1,7 +1,3 @@
-// Vendored from zotero/translators @ 85dfb399fdc2a73d9755b7cab394af7826af6297 on 2026-05-16.
-// License: Upstream's — AGPL-3.0-or-later per metadata block + BEGIN LICENSE BLOCK below.
-// Refresh: curl https://raw.githubusercontent.com/zotero/translators/<SHA>/arXiv.org.js -o src/translator-runtime/translators/arXiv.org.js
-//
 {
 	"translatorID": "ecddda2e-4fc6-4aea-9f17-ef3b56d7377a",
 	"label": "arXiv.org",

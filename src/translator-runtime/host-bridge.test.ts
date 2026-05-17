@@ -13,8 +13,12 @@ import {
   isFromExpectedSource,
   isTranslateRequest,
   isTranslateResponse,
+  isTranslatorLoadRequest,
+  isTranslatorLoadResponse,
   makeTranslateRequest,
   makeTranslateResponse,
+  makeTranslatorLoadRequest,
+  makeTranslatorLoadResponse,
   PROTOCOL_VERSION,
 } from './host-bridge'
 
@@ -153,5 +157,126 @@ describe('translate-request round-trip (AC7 — postMessage protocol)', () => {
     const out = makeTranslateRequest({ requestId: 'a', url: 'x', translatorId: 't' })
     const incoming = makeTranslateResponse({ requestId: 'b', items: [] })
     expect(out.requestId).not.toBe(incoming.requestId)
+  })
+})
+
+// ─── BE-8-5 AC10: protocol v2 — translator-load delegation ─────────────
+describe('protocol v2 — translator-load-request/response (AC10)', () => {
+  it('PROTOCOL_VERSION is 2 after BE-8-5 bump', () => {
+    expect(PROTOCOL_VERSION).toBe(2)
+  })
+
+  it('makeTranslatorLoadRequest produces a valid translator-load-request stamped at v2', () => {
+    const req = makeTranslatorLoadRequest({ requestId: 'tl-1', translatorId: ARXIV_TRANSLATOR_ID })
+    expect(isTranslatorLoadRequest(req)).toBe(true)
+    expect(req.protocolVersion).toBe(2)
+    expect(req.translatorId).toBe(ARXIV_TRANSLATOR_ID)
+  })
+
+  it('makeTranslatorLoadResponse (success) carries translator bundle', () => {
+    const resp = makeTranslatorLoadResponse({
+      requestId: 'tl-1',
+      translator: {
+        metadata: { translatorID: ARXIV_TRANSLATOR_ID, label: 'arXiv.org' },
+        body: '/* source bytes */',
+      },
+    })
+    expect(isTranslatorLoadResponse(resp)).toBe(true)
+    expect(resp.translator?.metadata.label).toBe('arXiv.org')
+  })
+
+  it('makeTranslatorLoadResponse (error) carries error envelope', () => {
+    const resp = makeTranslatorLoadResponse({
+      requestId: 'tl-1',
+      error: { code: 'NOT_IN_MANIFEST', message: 'translator UUID not in mirror manifest' },
+    })
+    expect(isTranslatorLoadResponse(resp)).toBe(true)
+    expect(resp.error?.code).toBe('NOT_IN_MANIFEST')
+  })
+
+  it('translator-load-request survives JSON round-trip', () => {
+    const req = makeTranslatorLoadRequest({ requestId: 'tl-rt', translatorId: 'uuid-x' })
+    const serialized = JSON.parse(JSON.stringify(req))
+    expect(isTranslatorLoadRequest(serialized)).toBe(true)
+    expect(serialized.translatorId).toBe('uuid-x')
+  })
+
+  it('translator-load-response survives JSON round-trip (both success + error)', () => {
+    const success = makeTranslatorLoadResponse({
+      requestId: 'tl-rt',
+      translator: { metadata: { translatorID: 'u', label: 'L' }, body: 'src' },
+    })
+    expect(isTranslatorLoadResponse(JSON.parse(JSON.stringify(success)))).toBe(true)
+    const err = makeTranslatorLoadResponse({
+      requestId: 'tl-rt',
+      error: { code: 'CDN_5XX', message: 'upstream returned 503' },
+    })
+    expect(isTranslatorLoadResponse(JSON.parse(JSON.stringify(err)))).toBe(true)
+  })
+
+  it('isTranslatorLoadRequest rejects wrong type', () => {
+    expect(isTranslatorLoadRequest({ type: 'translate-request', protocolVersion: 2, requestId: 'x' })).toBe(false)
+    expect(isTranslatorLoadRequest(null)).toBe(false)
+    expect(isTranslatorLoadRequest({})).toBe(false)
+  })
+
+  it('isTranslatorLoadResponse rejects mismatched protocolVersion (v3 not yet accepted)', () => {
+    expect(
+      isTranslatorLoadResponse({
+        type: 'translator-load-response',
+        protocolVersion: 3,
+        requestId: 'x',
+      }),
+    ).toBe(false)
+  })
+})
+
+// ─── BE-8-5 AC10: backward compatibility ────────────────────────────────
+describe('protocol backward compat — v1 messages still accepted by v2 listeners', () => {
+  // A v1 emitter (BE-8-4 build that didn't get re-pushed) sends messages
+  // stamped with protocolVersion: 1. The v2 listener (post-BE-8-5 build)
+  // must still accept them; otherwise a partial-upgrade in the wild would
+  // brick the sandbox communication. ACCEPTED_VERSIONS = {1, 2} encodes this.
+
+  it('isTranslateRequest accepts a v1 message', () => {
+    expect(
+      isTranslateRequest({
+        type: 'translate-request',
+        protocolVersion: 1,
+        requestId: 'v1',
+        url: 'https://x',
+        translatorId: 't',
+      }),
+    ).toBe(true)
+  })
+
+  it('isTranslateResponse accepts a v1 message', () => {
+    expect(
+      isTranslateResponse({
+        type: 'translate-response',
+        protocolVersion: 1,
+        requestId: 'v1',
+        items: [],
+      }),
+    ).toBe(true)
+  })
+
+  it('isFetchProxyRequest accepts a v1 message', () => {
+    expect(
+      isFetchProxyRequest({
+        type: 'fetch-request',
+        protocolVersion: 1,
+        requestId: 'v1',
+        method: 'GET',
+        url: 'https://x',
+      }),
+    ).toBe(true)
+  })
+
+  it('all guards reject v3 (unknown future version) — future bumps must extend ACCEPTED_VERSIONS', () => {
+    expect(isTranslateRequest({ type: 'translate-request', protocolVersion: 3, requestId: 'x' })).toBe(false)
+    expect(isTranslateResponse({ type: 'translate-response', protocolVersion: 3, requestId: 'x' })).toBe(false)
+    expect(isFetchProxyRequest({ type: 'fetch-request', protocolVersion: 3, requestId: 'x' })).toBe(false)
+    expect(isTranslatorLoadRequest({ type: 'translator-load-request', protocolVersion: 3, requestId: 'x' })).toBe(false)
   })
 })
