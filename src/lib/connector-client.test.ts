@@ -331,11 +331,9 @@ describe('listSelectors — preserves server-side ordering', () => {
 
 // ── BE-8-7: attachPdfBytes ─────────────────────────────────────────────────
 //
-// Two branches under test (per AC2 + AC14 BT4):
-//   - fetch branch — opts.onProgress undefined
-//   - XHR branch — opts.onProgress provided
-// Test names are explicitly prefixed with the branch they exercise so a
-// regression isolated to one branch is obvious in failure output.
+// Single fetch-based implementation. (The original spec included an XHR
+// branch for upload progress, but Pierre's Task 6 scope cut dropped the
+// progress UI; H3 from BE-8-7 code-review removed the dead XHR branch.)
 
 function pdfBuffer(byteCount: number): ArrayBuffer {
   const u8 = new Uint8Array(byteCount)
@@ -351,9 +349,7 @@ function attachRoute(status: number, body?: unknown): Route {
   return { status, body: body ?? {} }
 }
 
-// ----- fetch branch ----------------------------------------------------------
-
-describe('attachPdfBytes — fetch branch (no onProgress)', () => {
+describe('attachPdfBytes', () => {
   it('returns ok+attached on 200 {status:"attached"}', async () => {
     installFetchMock({
       '/references/abc-123/pdf-bytes': attachRoute(200, { status: 'attached', referenceId: 'abc-123' }),
@@ -484,150 +480,58 @@ describe('attachPdfBytes — fetch branch (no onProgress)', () => {
     // NOT double-encoded:
     expect(url).not.toContain('%252F')
   })
-})
 
-// ----- XHR branch -----------------------------------------------------------
-
-interface MockXhr {
-  upload: { listeners: Record<string, ((ev: ProgressEvent) => void)[]>; addEventListener: (k: string, l: (ev: ProgressEvent) => void) => void }
-  listeners: Record<string, (() => void)[]>
-  addEventListener: (k: string, l: () => void) => void
-  open: ReturnType<typeof vi.fn>
-  setRequestHeader: ReturnType<typeof vi.fn>
-  send: ReturnType<typeof vi.fn>
-  abort: () => void
-  status: number
-  responseText: string
-  getResponseHeader: () => string | null
-  _fireLoadWith: (status: number, body: string) => void
-  _fireError: () => void
-  _fireProgress: (loaded: number, total: number) => void
-  _fireAbort: () => void
-}
-
-function createMockXhr(): MockXhr {
-  const uploadListeners: Record<string, ((ev: ProgressEvent) => void)[]> = {}
-  const listeners: Record<string, (() => void)[]> = {}
-  const xhr: MockXhr = {
-    upload: {
-      listeners: uploadListeners,
-      addEventListener: (k, l) => {
-        ;(uploadListeners[k] ??= []).push(l)
-      },
-    },
-    listeners,
-    addEventListener: (k, l) => {
-      ;(listeners[k] ??= []).push(l)
-    },
-    open: vi.fn(),
-    setRequestHeader: vi.fn(),
-    send: vi.fn(),
-    abort() {
-      ;(listeners['abort'] ?? []).forEach((l) => l())
-    },
-    status: 0,
-    responseText: '',
-    getResponseHeader: () => null,
-    _fireLoadWith(status, body) {
-      this.status = status
-      this.responseText = body
-      ;(listeners['load'] ?? []).forEach((l) => l())
-    },
-    _fireError() {
-      ;(listeners['error'] ?? []).forEach((l) => l())
-    },
-    _fireProgress(loaded, total) {
-      ;(uploadListeners['progress'] ?? []).forEach((l) =>
-        l({ loaded, total, lengthComputable: true } as ProgressEvent),
-      )
-    },
-    _fireAbort() {
-      ;(listeners['abort'] ?? []).forEach((l) => l())
-    },
-  }
-  return xhr
-}
-
-describe('attachPdfBytes — XHR branch (onProgress provided)', () => {
-  let currentXhr: MockXhr | undefined
-  beforeEach(() => {
-    currentXhr = undefined
-    // XMLHttpRequest is constructed with `new`; vi.fn() returns a callable
-    // but not constructable. A class constructor that returns an object
-    // replaces `this` per JS spec — that's the shim we need.
-    class XhrStub {
-      constructor() {
-        currentXhr = createMockXhr()
-        return currentXhr as unknown as XhrStub
-      }
-    }
-    vi.stubGlobal('XMLHttpRequest', XhrStub)
-  })
-  afterEach(() => {
-    vi.unstubAllGlobals()
-  })
-
-  it('emits progress events with monotonically non-decreasing loaded values', async () => {
-    const progress: Array<[number, number]> = []
-    const promise = attachPdfBytes('abc-123', pdfBuffer(4096), {
-      onProgress: (loaded, total) => progress.push([loaded, total]),
-    })
-    // drive the mock
-    await Promise.resolve() // let the XHR be constructed
-    expect(currentXhr).toBeDefined()
-    currentXhr!._fireProgress(1024, 4096)
-    currentXhr!._fireProgress(2048, 4096)
-    currentXhr!._fireProgress(4096, 4096)
-    currentXhr!._fireLoadWith(200, JSON.stringify({ status: 'attached', referenceId: 'abc-123' }))
-    const r = await promise
-    expect(r).toEqual({ ok: true, status: 'attached', referenceId: 'abc-123' })
-    expect(progress).toEqual([
-      [1024, 4096],
-      [2048, 4096],
-      [4096, 4096],
-    ])
-  })
-
-  it('returns ok+attached on 200 {status:"attached"}', async () => {
-    const promise = attachPdfBytes('abc-123', pdfBuffer(2048), { onProgress: () => {} })
-    await Promise.resolve()
-    currentXhr!._fireLoadWith(200, JSON.stringify({ status: 'attached', referenceId: 'abc-123' }))
-    const r = await promise
-    expect(r).toEqual({ ok: true, status: 'attached', referenceId: 'abc-123' })
-  })
-
-  it('returns 408 on server-side timeout', async () => {
-    const promise = attachPdfBytes('abc-123', pdfBuffer(2048), { onProgress: () => {} })
-    await Promise.resolve()
-    currentXhr!._fireLoadWith(408, JSON.stringify({ message: 'request timeout' }))
-    const r = await promise
-    expect(r).toMatchObject({ ok: false, status: 408 })
-  })
-
-  it('returns 413 on server-side oversize', async () => {
-    const promise = attachPdfBytes('abc-123', pdfBuffer(2048), { onProgress: () => {} })
-    await Promise.resolve()
-    currentXhr!._fireLoadWith(413, JSON.stringify({ message: 'too large' }))
-    const r = await promise
-    expect(r).toMatchObject({ ok: false, status: 413 })
-  })
-
-  it('returns network-error when xhr fires "error"', async () => {
-    const promise = attachPdfBytes('abc-123', pdfBuffer(2048), { onProgress: () => {} })
-    await Promise.resolve()
-    currentXhr!._fireError()
-    const r = await promise
-    expect(r).toMatchObject({ ok: false, status: 'network-error' })
-  })
-
-  it('returns timeout when local AbortController triggers (xhr aborts)', async () => {
+  it('returns network-error (not timeout) when external signal aborts mid-flight', async () => {
+    // M6 from BE-8-7 code-review: caller-cancel and local-timeout must surface
+    // with different `status` values — 'network-error' for cancel, 'timeout'
+    // for the internal setTimeout trip. Same Promise reject path, two
+    // statuses, so the popup can render the right copy.
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      (_input, init) =>
+        new Promise((_, reject) => {
+          ;(init?.signal as AbortSignal).addEventListener('abort', () => {
+            const err = new Error('aborted')
+            err.name = 'AbortError'
+            reject(err)
+          })
+        }),
+    )
+    const externalCtrl = new AbortController()
     const promise = attachPdfBytes('abc-123', pdfBuffer(2048), {
-      onProgress: () => {},
-      timeoutMs: 5,
+      timeoutMs: 60_000, // long enough to NOT fire — we want the external abort to win
+      signal: externalCtrl.signal,
     })
-    // Wait for the internal setTimeout to fire (real timers, 5 ms).
-    await new Promise((res) => setTimeout(res, 25))
+    // Wait a microtask so the fetch is in-flight + listening on the signal.
+    await Promise.resolve()
+    externalCtrl.abort()
     const r = await promise
-    expect(r).toMatchObject({ ok: false, status: 'timeout' })
+    expect(r).toMatchObject({ ok: false, status: 'network-error', message: 'aborted' })
+  })
+
+  it('returns network-error when external signal was already aborted on entry', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(
+      (_input, init) =>
+        new Promise((_, reject) => {
+          ;(init?.signal as AbortSignal).addEventListener('abort', () => {
+            const err = new Error('aborted')
+            err.name = 'AbortError'
+            reject(err)
+          })
+          // If the signal is already aborted, the listener fires synchronously
+          // on add, but to be safe also check here:
+          if ((init?.signal as AbortSignal).aborted) {
+            const err = new Error('aborted')
+            err.name = 'AbortError'
+            reject(err)
+          }
+        }),
+    )
+    const externalCtrl = new AbortController()
+    externalCtrl.abort()
+    const r = await attachPdfBytes('abc-123', pdfBuffer(2048), {
+      signal: externalCtrl.signal,
+    })
+    expect(r).toMatchObject({ ok: false, status: 'network-error', message: 'aborted' })
+    expect(fetchSpy).toHaveBeenCalledOnce()
   })
 })

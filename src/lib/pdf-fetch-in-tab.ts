@@ -127,6 +127,12 @@ async function fetchPdfInTab(url: string, maxBytes: number): Promise<InTabResult
 
   // Magic-byte check: PDF spec mandates first 5 bytes are %PDF- (0x25, 0x50,
   // 0x44, 0x46, 0x2d). HTML challenge pages start with <, JSON with {, etc.
+  //
+  // BT7 NOTE (L1 from BE-8-7 code-review): the explicit `buf = null` clears
+  // below cannot be unit-tested from outside the content-script world (the
+  // mock harness intercepts at the chrome.scripting.executeScript boundary,
+  // not inside the injected function). Verified only by reading this file;
+  // future maintainers MUST preserve the clears on every error-return path.
   if (buf.byteLength < 5) {
     const result: InTabResult = {
       ok: false,

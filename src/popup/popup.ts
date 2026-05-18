@@ -161,7 +161,14 @@ type State =
   | { kind: 'signed-out' }
   | { kind: 'error-no-metadata' }
   | { kind: 'error-too-large' }
-  | { kind: 'error-409-duplicate'; existingId: string }
+  // BE-8-7 H1 (AC12a / BT6): `wasPdfContext` is true when the original save
+  // was on a PDF / article-with-PDF surface (Flow A bytes-upload, Flow B
+  // article-PDF attach, or Flow A's BE-7 fallback). When true, the 409 render
+  // surfaces the "open in Milton, use Attach file" affordance so the user
+  // knows the prior capture may have left the reference PDF-less — the
+  // mid-Save cancellation race (popup closes between createReference 201 and
+  // the bytes upload starting) is the silent data-loss surface this addresses.
+  | { kind: 'error-409-duplicate'; existingId: string; wasPdfContext: boolean }
   | { kind: 'error-400-validation'; message: string; detail?: string }
   | { kind: 'error-network'; message: string }
   | { kind: 'error-auth-failed'; detail: string }
@@ -190,10 +197,19 @@ const TRANSLATOR_DONE_FLASH_MS = 800
 // server-side TimeoutLayer + 30s client headroom.
 const PDF_FETCH_TIMEOUT_MS = 45_000
 const PDF_UPLOAD_TIMEOUT_MS = 90_000
+// BE-8-7 L3 from code-review: auto-close delay on the success screen. Pre-BE-8-7
+// pattern used the literal 1500; named here so it sits with the other timeout
+// constants and is grep-able when the success-state behavior is revisited.
+const SUCCESS_AUTO_CLOSE_MS = 1500
 // BE-8-7: dual-tone PDF document icon for the success state when bytes were
 // attached. Inline SVG (no icon lib in this repo); two `currentColor` fills
 // at different opacities give the dual-tone effect and inherit the popup's
 // success-text color automatically. Sized via `.milton-popup-pdf-icon` CSS.
+// TODO(BE-8-7-followup-figma): per CLAUDE.md Rule 1 (FIGMA VERIFICATION),
+// this icon was shipped without Figma consultation as a provisional design
+// (Task 6 scope cut). Consult Figma node 1323:8984 ("Browser extension")
+// for the success-with-PDF treatment and replace if Figma defines one.
+// H2 from BE-8-7 code-review filed this as a follow-up.
 const PDF_ICON_SVG =
   '<svg class="milton-popup-pdf-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">' +
   '<path fill="currentColor" opacity="0.35" d="M3.5 1.5h5.5L13 5.5V14a.5.5 0 0 1-.5.5h-9A.5.5 0 0 1 3 14V2a.5.5 0 0 1 .5-.5z"/>' +
@@ -545,8 +561,13 @@ async function tryClientTranslator(url: string, candidateIds: string[]): Promise
 
   // BE-8-7 Flow B: stage the first PDF attachment URL (if any). Save handler
   // will fetch + upload bytes AFTER createReference returns 201. Best-effort:
-  // failure soft-degrades to pdfAttached: 'failed' without undoing the save.
-  const pdfAttachmentUrl = extractPdfAttachmentUrl(items[0] as { attachments?: unknown })
+  // failure soft-degrades to pdfAttached: false without undoing the save.
+  // M3 from BE-8-7 code-review: one local cast keeps the surface narrow —
+  // ZoteroItem's open `[key:string]: unknown` index signature means
+  // `items[0].attachments` is structurally `unknown`; this pins it to the
+  // helper's parameter shape without `as any`.
+  const item0WithAttachments = items[0] as { attachments?: unknown }
+  const pdfAttachmentUrl = extractPdfAttachmentUrl(item0WithAttachments)
   if (pdfAttachmentUrl !== null) {
     pendingPdfAttachmentUrl = pdfAttachmentUrl
     pdfAttachmentMode = 'flow-b'
@@ -555,7 +576,7 @@ async function tryClientTranslator(url: string, candidateIds: string[]): Promise
   // debug stripe shows what the translator actually returned. Helpful when
   // Flow B doesn't fire (mode=none) — answers "did translator emit nothing,
   // emit something with wrong shape, or hit a captcha-blocked PDF link?".
-  const rawAttachments = (items[0] as { attachments?: unknown }).attachments
+  const rawAttachments = item0WithAttachments.attachments
   if (Array.isArray(rawAttachments)) {
     if (rawAttachments.length === 0) {
       lastFlowBAttachmentsDump = 'attachments=[]'
@@ -813,7 +834,7 @@ function render(): void {
       // currentColor with different opacities — adapts to popup theme.
       const pdfIcon = state.pdfAttached === true ? PDF_ICON_SVG : ''
       root.innerHTML = `<p class="milton-popup-success">${pdfIcon}Saved to Milton ✓</p>`
-      window.setTimeout(() => window.close(), 1500)
+      window.setTimeout(() => window.close(), SUCCESS_AUTO_CLOSE_MS)
       break
     }
 
@@ -842,13 +863,24 @@ function render(): void {
       `
       break
 
-    case 'error-409-duplicate':
+    case 'error-409-duplicate': {
+      // BE-8-7 H1 (AC12a): when the duplicate fires on a PDF / article-with-PDF
+      // surface, the mid-Save cancellation race may have left the original
+      // reference PDF-less (createReference completed; popup closed before
+      // the bytes upload kicked off). Surface a one-line affordance so the
+      // user knows how to recover (open in Milton + "Attach file"). Additive
+      // render branch only — the 409 state itself is unchanged.
+      const pdfAffordance = state.wasPdfContext
+        ? `<p class="milton-popup-helper">If this was a session-gated PDF and the original capture didn't attach it, open the reference in Milton and use "Attach file" to attach manually.</p>`
+        : ''
       root.innerHTML = `
         <p class="milton-popup-header">Already in your library</p>
         <p class="milton-popup-helper">This reference is already saved in Milton.</p>
+        ${pdfAffordance}
         <p class="milton-popup-error-detail">id: ${escapeHtml(state.existingId)}</p>
       `
       break
+    }
 
     case 'error-400-validation':
       root.innerHTML = `
@@ -1870,14 +1902,18 @@ async function runPostCreatePdfFlow(referenceId: string): Promise<void> {
   // visually; transition to success when done.
   if (pdfAttachmentMode === 'flow-a' && pendingPdfBytes !== null) {
     const ok = await uploadPdfBytes(referenceId, pendingPdfBytes)
-    pendingPdfBytes = null // BT1/BT3 hygiene — release the 50 MiB ASAP
+    pendingPdfBytes = null // BT3 GC hygiene — release the 50 MiB ASAP
     setState({ kind: 'success', id: referenceId, pdfAttached: ok })
     return
   }
 
   // 'flow-b' — fetch the PDF attachment URL in-tab, then upload. Stay in
-  // `posting` visually throughout both phases.
+  // `posting` visually throughout both phases. M4 from BE-8-7 code-review:
+  // null `pendingPdfAttachmentUrl` symmetrically with Flow A's
+  // `pendingPdfBytes = null` so module-state hygiene matches across flows.
   if (pdfAttachmentMode === 'flow-b' && pendingPdfAttachmentUrl !== null) {
+    const flowBUrl = pendingPdfAttachmentUrl
+    pendingPdfAttachmentUrl = null
     if (currentTabId === undefined) {
       console.warn('[milton-popup] no tabId for Flow B attach; saved without PDF')
       setState({ kind: 'success', id: referenceId })
@@ -1885,7 +1921,7 @@ async function runPostCreatePdfFlow(referenceId: string): Promise<void> {
     }
     let bytes: ArrayBuffer
     try {
-      const result = await fetchPdfBytesInTab(currentTabId, pendingPdfAttachmentUrl, {
+      const result = await fetchPdfBytesInTab(currentTabId, flowBUrl, {
         timeoutMs: PDF_FETCH_TIMEOUT_MS,
       })
       bytes = result.bytes
@@ -1909,8 +1945,9 @@ async function runPostCreatePdfFlow(referenceId: string): Promise<void> {
  * attached (200 attached or already_attached); false otherwise. Pierre's
  * UX direction: no per-error distinction at the popup level; 408 timeout +
  * 400/403/404/413/503 + network-error all collapse to "saved without PDF"
- * (user sees in Milton). Uses fetch branch (no onProgress) since the
- * popup no longer renders progress.
+ * (user sees in Milton). attachPdfBytes is fetch-based — the original spec's
+ * XHR/onProgress branch was removed in H3 from BE-8-7 code-review after the
+ * Task 6 scope cut dropped the progress UI.
  */
 async function uploadPdfBytes(referenceId: string, bytes: ArrayBuffer): Promise<boolean> {
   pdfUploadAbort = new AbortController()
@@ -2019,17 +2056,22 @@ function dispatchTranslateServerError(err: TranslateError): void {
   }
 }
 
-function dispatchCreateReferenceResult(result: CreateReferenceResult): void {
-  if (result.ok) {
-    setState({ kind: 'success', id: result.id })
-    return
-  }
+// BE-8-7 M5: only invoked on the FAILURE branch of save() — the success path
+// routes through `runPostCreatePdfFlow` instead. Param type narrowed to the
+// error subset so future readers don't reach for a now-dead success branch.
+function dispatchCreateReferenceResult(result: Exclude<CreateReferenceResult, { ok: true }>): void {
   switch (result.status) {
     case 503:
       setState({ kind: 'signed-out' })
       break
     case 409:
-      setState({ kind: 'error-409-duplicate', existingId: result.id })
+      // BE-8-7 H1 (AC12a): snapshot whether this save was a PDF-context save
+      // so the 409 render can surface the manual-Attach-in-Milton affordance.
+      setState({
+        kind: 'error-409-duplicate',
+        existingId: result.id,
+        wasPdfContext: pdfAttachmentMode !== 'none',
+      })
       break
     case 400:
       setState({
