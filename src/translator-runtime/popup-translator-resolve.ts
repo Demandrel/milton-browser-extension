@@ -21,8 +21,10 @@
 // avoids drift.
 
 import type { BundledTranslator } from './zotero-types'
-import { getBundledTranslator, getResolvedTranslator } from './translator-bundle'
+import { getResolvedTranslator } from './translator-bundle'
 import { fetchManifest } from './translator-fetcher'
+
+const TRANSLATOR_CACHE_KEY_PREFIX = 'translator-fetched:'
 
 /**
  * If the SW's auto-refresh has cached a fresher version of the bundled
@@ -31,20 +33,38 @@ import { fetchManifest } from './translator-fetcher'
  * proceeds with the bundled version via the sandbox's own lookup).
  *
  * Best-effort: never throws. Failures degrade silently to `undefined`.
+ *
+ * Hot-path optimization (code-review H1 fix 2026-05-18): probe
+ * `chrome.storage.local` for the per-UUID cache key BEFORE calling
+ * `fetchManifest()`. The manifest fetch has a 1h TTL but the SW refresh
+ * runs every 6h, so without this short-circuit 5 of every 6 hours' first
+ * captures would pay a network round-trip to translators.milton.so just
+ * to discover that no cached-fresher entry exists. The cache-key probe is
+ * sub-millisecond; the manifest fetch (cache-miss case) is ~50-200ms over
+ * the wire. Cached-fresher entries only exist after a divergence has been
+ * detected + fetched — empirically rare for the bundled subset.
  */
 export async function maybeInlineFresherTranslator(
   uuid: string,
 ): Promise<BundledTranslator | undefined> {
   try {
+    if (typeof chrome === 'undefined' || chrome.storage === undefined) return undefined
+    const cacheKey = `${TRANSLATOR_CACHE_KEY_PREFIX}${uuid}`
+    const cacheLookup = (await chrome.storage.local.get(cacheKey)) as Record<string, unknown>
+    if (cacheLookup[cacheKey] === undefined) return undefined
+
     const manifest = await fetchManifest()
     const resolved = await getResolvedTranslator(uuid, manifest)
+    // `resolved === null` covers all the no-inline cases:
+    //   - getResolvedTranslator found no cached-fresher match against the
+    //     manifest and fell through to getBundledTranslator(uuid), which
+    //     returns null in popup context (verifiedSet is only installed in
+    //     the sandbox by bootstrapIntegrity).
+    //   - The cached entry exists but its SHA no longer matches the current
+    //     manifest (stale-cache case).
+    // Non-null resolution in popup context is therefore unambiguously the
+    // cached-fresher win — inline it.
     if (resolved === null) return undefined
-    const bundled = getBundledTranslator(uuid)
-    // If the resolver picked a body different from the bundle, that's the
-    // cached-fresher win — inline it. If the resolver picked the same body
-    // (manifest === pin OR no cached entry OR cached SHA stale), no need
-    // to inline; the sandbox's own bundled lookup gives the same answer.
-    if (bundled !== null && resolved.body === bundled.body) return undefined
     return resolved
   } catch (err) {
     console.warn('[milton-popup] cached-fresher resolve failed; falling back to bundled', err)

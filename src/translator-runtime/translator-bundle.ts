@@ -393,7 +393,15 @@ async function loadCachedTranslator(translatorID: string): Promise<CachedTransla
       return null
     }
     return cached as CachedTranslatorEntry
-  } catch {
+  } catch (err) {
+    // Surface storage faults (extension shutdown, policy-disabled storage,
+    // corrupted entry) in DevTools rather than silently masquerading as a
+    // cache miss. Behavior unchanged — caller falls through to bundled.
+    // Pattern mirrors translator-fetcher.ts:319-324 (loadCachedManifest).
+    console.warn(
+      `[translator-bundle] loadCachedTranslator(${translatorID}): storage read failed; treating as cache miss:`,
+      err instanceof Error ? err.message : String(err),
+    )
     return null
   }
 }

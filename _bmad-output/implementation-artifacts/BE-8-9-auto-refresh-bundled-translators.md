@@ -159,12 +159,21 @@ Unblocks: nothing in the BE-8 epic (BE-8-8 / BE-8-9-original are deferred to fut
   - [x] 7.4 Pre-Review Self-Check (AC15 items + the template's standard items).
   - [x] 7.5 Update `package.json` if any new devDependency was added (none expected — alarms is a chrome.* API, no library needed). _(No new deps.)_
 
-- [ ] **Task 8 — Story closeout** (Pierre-customized flow)
-  - [ ] 8.1 PR opens as non-draft (per CLAUDE.md Rule 3); body includes the AC checklist + smoke evidence from Task 6.
-  - [ ] 8.2 Background-watch CI per CLAUDE.md Rule 7 (`gh run watch <id> --exit-status` in background bash, NOT polled).
-  - [ ] 8.3 `/bmad_bmm_code-review` on the OPEN PR (per memory `feedback-code-review-required-before-done`); fix HIGH findings; re-watch CI.
+- [x] **Task 8 — Story closeout** (Pierre-customized flow)
+  - [x] 8.1 PR opens as non-draft (per CLAUDE.md Rule 3); body includes the AC checklist + smoke evidence from Task 6. _(PR #10 opened.)_
+  - [x] 8.2 Background-watch CI per CLAUDE.md Rule 7 (`gh run watch <id> --exit-status` in background bash, NOT polled). _(CI green on initial push.)_
+  - [x] 8.3 `/bmad_bmm_code-review` on the OPEN PR (per memory `feedback-code-review-required-before-done`); fix HIGH findings; re-watch CI. _(Done 2026-05-18 — see "Review Follow-ups (AI)" + Change Log code-review entry. 2 HIGH + 4 MEDIUM + 2 LOW found; H1/H2/M1/M2/M4/L2 fixed in code; M3 deferred as follow-up. 407/407 tests pass.)_
   - [ ] 8.4 After PR-side green + code-review green, merge; background-watch post-merge main CI (CLAUDE.md Rule 7 / memory `feedback-monitor-post-merge-ci-on-main`).
   - [ ] 8.5 Post-merge: `chore(BE-8-9): mark done` on `main` (the established pattern; see `git log --oneline | grep 'mark done'`).
+
+### Review Follow-ups (AI)
+
+<!-- Created 2026-05-18 by /bmad_bmm_code-review. HIGH+MEDIUM fixes applied
+in code; this section tracks items that are deferred or require live
+sideload state that isn't reproducible from a code change. -->
+
+- [ ] **[AI-Review][MEDIUM] AC11 S3 (cached-fresher resolver smoke) deferred until upstream divergence exists.** The literal S3 ("inject a fake cached entry whose SHA matches the manifest entry; verify cached body executes in sandbox") requires either (a) manufacturing divergence by editing `translator-bundle-pin.json` + rebuilding — touches AC12-protected files; or (b) waiting for Zotero to push a translator change ahead of our next `pnpm refresh:translators`. Resolver decision logic + IPC plumbing are unit-tested (`translator-bundle.test.ts` 7 cases + `host-bridge.test.ts` 4 cases + `popup-translator-resolve.test.ts` 6 cases incl. H1 short-circuit). When upstream divergence next happens (or Pierre wants to force one), exercise S3 live and check the AC15 third self-check item. **Files:** none — operational follow-up.
+- [ ] **[AI-Review][LOW] `console.log('[milton-sw] booted')` runs on every SW wake-up.** MV3 re-executes the SW script on each event wake-up (~every 30s of inactivity), so this prints "booted" repeatedly in long sessions. Useful as a heartbeat trace but noisy. If it becomes annoying during dogfood, gate behind a DEV flag or drop in favor of the alarm-fire log. **Files:** `src/sw/sw.ts:33`.
 
 ## Dev Notes
 
@@ -267,11 +276,12 @@ This is the same architectural shape Zotero Connector uses (the SW reads chrome.
 - `dist/assets/sw.ts-Gs4nijOw.js` (the actual SW chunk — 3.30 KB raw / 1.42 KB gzip)
 Confirmed via `find dist -name "service-worker*" -o -name "sw*"`.
 
-**Test count.** 25 test files / 399 tests (baseline 22 files / 368 tests). +3 files / +31 tests. Above the story's "+15-20" target.
+**Test count.** 25 test files / 407 tests (baseline 22 files / 368 tests). +3 files / +39 tests. Above the story's "+15-20" target. Post-code-review additions accounted for below.
 - `src/sw/sw-handlers.test.ts` — 10 tests
-- `src/translator-runtime/translator-refresh.test.ts` — 9 tests
-- `src/translator-runtime/popup-translator-resolve.test.ts` — 5 tests
+- `src/translator-runtime/translator-refresh.test.ts` — 12 tests (9 original + 3 storage-write-tolerance added by code-review H2 fix)
+- `src/translator-runtime/popup-translator-resolve.test.ts` — 6 tests (rewritten in code-review H1/M1 pass; now exercises the cache-existence short-circuit + the simplified resolver flow)
 - `src/translator-runtime/translator-bundle.test.ts` — +7 tests (5 enumerated AC10 cases + manifest-deleted + chrome.storage-unavailable)
+- `src/translator-runtime/host-bridge.test.ts` — +4 inlineTranslator IPC tests added by code-review M2 fix (forward, omit, JSON round-trip, type-guard acceptance)
 
 **AC12 verification.** Source-level diff against `main`:
 ```
@@ -352,14 +362,22 @@ When upstream Zotero pushes an arXiv (or any other bundled) translator change AN
 
 **Modified files:**
 - `manifest.config.ts` — added `'alarms'` permission + `background: { service_worker: 'src/sw/sw.ts', type: 'module' }`
-- `src/translator-runtime/translator-bundle.ts` — added `getResolvedTranslator` + Manifest type import + cached-entry loader + `TRANSLATOR_CACHE_KEY_PREFIX` constant
+- `src/translator-runtime/translator-bundle.ts` — added `getResolvedTranslator` + Manifest type import + cached-entry loader + `TRANSLATOR_CACHE_KEY_PREFIX` constant; **code-review L2 fix:** `loadCachedTranslator` storage-read catch now logs `console.warn` rather than silently masquerading as cache miss
 - `src/translator-runtime/translator-bundle.test.ts` — +7 tests for `getResolvedTranslator`
 - `src/translator-runtime/zotero-types.d.ts` — added optional `inlineTranslator?: BundledTranslator` to `TranslateRequest`
 - `src/translator-runtime/host-bridge.ts` — `makeTranslateRequest` accepts/forwards `inlineTranslator`
+- `src/translator-runtime/host-bridge.test.ts` — **code-review M2 fix:** +4 inlineTranslator IPC tests (forward, omit, JSON round-trip, type-guard acceptance)
 - `src/translator-runtime/sandbox.ts` — `runTranslation` honors `inlineTranslator`; falls back to `getResolvedTranslator(uuid, null)` for bundled lookup; postMessage listener forwards inline through
 - `src/offscreen/offscreen.ts` — `MiltonTranslateRequestMsg` gains `inlineTranslator`; dispatch loop forwards it to sandbox postMessage
 - `src/lib/offscreen-client.ts` — `RequestClientTranslationArgs.inlineTranslator` plumbing
 - `src/popup/popup.ts` — `tryClientTranslator` + DEV `miltonPopupSpike` call `maybeInlineFresherTranslator` before sending the translate request
+
+**Files modified by code-review pass (2026-05-18):**
+- `src/translator-runtime/popup-translator-resolve.ts` — **H1 fix:** cache-existence short-circuit before `fetchManifest()` (avoids hot-path network round-trip); **M1 fix:** removed dead body-compare branch (unreachable in popup context — `verifiedSet` is sandbox-only)
+- `src/translator-runtime/popup-translator-resolve.test.ts` — rewritten for H1+M1 (6 tests; new test pins the short-circuit behavior)
+- `src/translator-runtime/translator-refresh.ts` — **H2 fix:** `writeRefreshState` wraps storage.set in try/catch (AC7 non-fatal contract); **M4 fix:** dropped `listBundledTranslators` import; iterates `Object.entries(pin.bundleHashes)` directly so the 1.7 MB translator-bundle chunk stays out of the SW cold-boot graph
+- `src/translator-runtime/translator-refresh.test.ts` — rewritten for M4 (drops `./translator-bundle` mock); +3 H2 storage-write-tolerance tests; total 12 tests
+- `src/sw/sw-handlers.ts` — **H2 fallout:** `refreshSafely` catch comment corrected (no longer says "should be unreachable")
 
 ## Change Log
 
@@ -367,3 +385,4 @@ When upstream Zotero pushes an arXiv (or any other bundled) translator change AN
 |---|---|---|
 | 2026-05-18 | Claude (Opus 4.7 1M, BMad SM workflow create-story, Pierre-customized flow) | Initial draft. Story scope: closes the Zotero-pattern auto-refresh gap left by BE-8-5; adds the extension's first service worker (chrome.alarms requires SW); preserves Charter v2 Decisions 6 + 9; ~15-20 new tests; 3 smoke scenarios. Method-17 hardening applied automatically (per Pierre customized flow): 9 attacks identified / 9 hardening edits applied. Key hardening edits: (a) AC2 idempotent-alarm + browser-restart catch-up (would have missed alarm-dropped scenarios); (b) AC5 explicit fall-through cases enumerated + `currentManifest=null` graceful path (would have ambiguous-state bugged on degraded mode); (c) AC6 explicit "no new trust surface" framing + cache re-verification at resolution time (would have trusted stale cache silently); (d) AC7 signature-invalid CRITICAL with explicit "abort + do not overwrite cache" + reference to existing `fetchManifest` code path; (e) AC11 S3 critical-warning about SHA-must-match-manifest-not-fabricated (would have produced silently-failing smoke); (f) AC12 byte-identical dist/ verification + `pnpm refresh:translators` untouchable (would have allowed Charter Decision 6 drift); (g) Out-of-scope section adding seven explicit non-goals (would have left scope-creep ammunition for reviewer); (h) Dev Notes "Signature-invalid is the trap" + double-check of existing `fetchManifest` code path for verify-before-cache-write ordering; (i) Tasks 7.3 byte-identical dist/ verification step with snapshot+diff procedure. Story status set to `ready-for-dev` pending Pierre's step-7 validation. |
 | 2026-05-18 | Claude (Opus 4.7 1M, BMad SM workflow dev-story) | Implementation complete (Tasks 1-5, 7). 31 new tests across 3 new test files; 399/399 passing; typecheck + build green; SW chunk 3.30 KB raw / 1.42 KB gzip (well under AC15's <50 KB); IPC-boundary grep returns zero; translator source files / pin file / bundler script byte-identical to main (AC12 preserved at source level). One architectural extension beyond literal AC scope: added optional `inlineTranslator?: BundledTranslator` field to the `milton-translate-request` and `translate-request` IPC envelopes + a popup-side `maybeInlineFresherTranslator` helper. Required because the sandbox + offscreen have no chrome.storage access, so the cached-fresher entry must reach the sandbox via IPC for AC11 S3 to actually pass (the popup is the natural arbiter — has manifest + storage + already orchestrates translation). Pierre confirmed Option 1 of three discussed alternatives. SW handlers split into `sw-handlers.ts` for unit-testability; `sw.ts` is a thin glue layer per MV3 SW constraints. Status flipped to `review` pending Pierre's smoke (AC11 S1-S3) + code-review. |
+| 2026-05-18 | Claude (Opus 4.7 1M, BMad SM workflow code-review on PR #10) | **Adversarial code review pass — 8 findings (2 HIGH / 4 MEDIUM / 2 LOW); 6 fixed in code, 2 deferred to Review Follow-ups (AI).** Fixes: **H1** — `maybeInlineFresherTranslator` now probes `chrome.storage.local` for the per-UUID cache key BEFORE calling `fetchManifest()`, avoiding a 50-200ms network round-trip on every popup capture (the 1h manifest TTL vs 6h SW-refresh period meant 5/6 of first-of-hour captures would otherwise pay the tax). **H2** — `writeRefreshState` wraps `chrome.storage.local.set` in try/catch so storage quota/policy errors no longer propagate out of `refreshBundledTranslators` and violate AC7's non-fatal contract; `sw-handlers.refreshSafely` comment updated to remove misleading "should be unreachable". **M1** — dropped the dead body-compare branch in `popup-translator-resolve.ts` (was unreachable in popup context because `verifiedSet` is only installed in the sandbox); the `resolved === null` short-circuit already covers all no-inline cases. **M2** — added 4 inlineTranslator IPC tests in `host-bridge.test.ts` (forward, omit, JSON round-trip, type-guard acceptance) so a future refactor that drops the field at any IPC layer surfaces immediately. **M4** — `translator-refresh.ts` no longer imports `listBundledTranslators` from `./translator-bundle`; iterates `Object.entries(pin.bundleHashes)` directly. Drops the 1.7 MB translator-bundle chunk out of the SW cold-boot dependency graph (replaced by a 3.64 KB pin-only chunk). **L2** — `loadCachedTranslator` storage-read catch now logs a `console.warn` instead of silently masquerading storage failures as cache misses. Deferred: **M3** — AC11 S3 (cached-fresher resolver smoke) cannot be exercised live until upstream divergence exists; resolver decision + IPC plumbing are unit-tested across `translator-bundle.test.ts` + `host-bridge.test.ts` + `popup-translator-resolve.test.ts`. **L1** — booted log noise; gate behind DEV flag if it becomes annoying. Test count: 407/407 (was 399; +8). Typecheck + build green. SW chunk 3.29 KB raw / 1.41 KB gzip. IPC-boundary grep zero hits. |

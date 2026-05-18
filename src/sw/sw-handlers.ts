@@ -41,10 +41,13 @@ async function refreshSafely(triggerLabel: string): Promise<void> {
       `${LOG_PREFIX} refresh result=${result.lastRefreshResult} updatedCount=${result.updatedCount} durationMs=${result.durationMs}`,
     )
   } catch (err) {
-    console.error(
-      `${LOG_PREFIX} refresh threw (should be unreachable — refreshBundledTranslators catches internally):`,
-      err,
-    )
+    // refreshBundledTranslators is designed to catch its own per-translator
+    // and storage failures (AC7 contract) and return a RefreshResult rather
+    // than throwing. This catch is a final safety net for genuinely
+    // unexpected throws (refactor bugs, an unhandled error path) so the
+    // chrome.runtime listener never crashes — which would mark the SW
+    // "errored" in chrome://serviceworker-internals and break alarm dispatch.
+    console.error(`${LOG_PREFIX} refresh threw unexpectedly:`, err)
   }
 }
 

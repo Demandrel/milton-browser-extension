@@ -32,7 +32,13 @@ import {
   fetchTranslatorFromCdn,
   TranslatorFetcherError,
 } from './translator-fetcher'
-import { listBundledTranslators } from './translator-bundle'
+
+// Note: deliberately NOT importing from './translator-bundle' — that module
+// `?raw`-imports ~34 translator source files (~1.7 MB compiled chunk) which
+// the SW would otherwise pull into its cold-boot graph. The refresh
+// coordinator only needs the bundled-UUID list + per-UUID pin SHA, both of
+// which live in `translator-bundle-pin.json` (a small static JSON). See
+// code-review M4 fix 2026-05-18 for the perf rationale.
 
 // ────────────────────────────────────────────────────────────────────────
 // Constants
@@ -73,7 +79,19 @@ function isStorageAvailable(): boolean {
 
 async function writeRefreshState(state: RefreshResult): Promise<void> {
   if (!isStorageAvailable()) return
-  await chrome.storage.local.set({ [REFRESH_STATE_KEY]: state })
+  try {
+    await chrome.storage.local.set({ [REFRESH_STATE_KEY]: state })
+  } catch (err) {
+    // AC7 contract: refresh failure modes are non-fatal and observable.
+    // A storage write throw (quota exceeded, extension shutting down,
+    // storage disabled by enterprise policy) MUST NOT propagate up and
+    // abort the refresh — the in-memory state still reaches the caller
+    // via the return value; we just lose the persisted observability.
+    console.warn(
+      `${LOG_PREFIX} failed to persist refresh state (storage quota? policy?):`,
+      err instanceof Error ? err.message : String(err),
+    )
+  }
 }
 
 export async function readRefreshState(): Promise<RefreshResult | null> {
@@ -146,24 +164,19 @@ export async function refreshBundledTranslators(): Promise<RefreshResult> {
     manifestByUuid.set(entry.translatorID, { sha256: entry.sha256, label: entry.label })
   }
 
-  // Step 2 — per-translator SHA compare + lazy-fetch on diff.
+  // Step 2 — per-translator SHA compare + lazy-fetch on diff. Iterate over
+  // the pin file directly (Object.entries(pin.bundleHashes)) instead of
+  // calling translator-bundle's listBundledTranslators() — keeps the heavy
+  // translator-source `?raw` imports out of the SW chunk (code-review M4).
   const bundlePins = pin.bundleHashes as Record<string, string>
   const perUuidErrors: Record<string, string> = {}
   let updatedCount = 0
-  const bundled = listBundledTranslators()
-  for (const bundledEntry of bundled) {
-    const uuid = bundledEntry.metadata.translatorID
+  for (const [uuid, bundlePinSha] of Object.entries(bundlePins)) {
     const manifestEntry = manifestByUuid.get(uuid)
     if (manifestEntry === undefined) {
       console.warn(
-        `${LOG_PREFIX} bundled translator ${uuid} (${bundledEntry.metadata.label}) absent from upstream manifest; keeping bundled version.`,
+        `${LOG_PREFIX} bundled translator ${uuid} absent from upstream manifest; keeping bundled version.`,
       )
-      continue
-    }
-    const bundlePinSha = bundlePins[uuid]
-    if (bundlePinSha === undefined) {
-      // Bundle ships without a pin entry — already flagged at bootstrap
-      // by verifyAllBundleIntegrity. Skip silently here; nothing to compare.
       continue
     }
     if (manifestEntry.sha256 === bundlePinSha) {
@@ -181,7 +194,7 @@ export async function refreshBundledTranslators(): Promise<RefreshResult> {
       }
       updatedCount++
       console.log(
-        `${LOG_PREFIX} refreshed ${uuid} (${bundledEntry.metadata.label}): pin=${bundlePinSha.slice(0, 12)}… manifest=${manifestEntry.sha256.slice(0, 12)}…`,
+        `${LOG_PREFIX} refreshed ${uuid} (${manifestEntry.label}): pin=${bundlePinSha.slice(0, 12)}… manifest=${manifestEntry.sha256.slice(0, 12)}…`,
       )
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)

@@ -8,11 +8,6 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('./translator-bundle', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('./translator-bundle')>()
-  return { ...actual, listBundledTranslators: vi.fn() }
-})
-
 vi.mock('./translator-fetcher', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./translator-fetcher')>()
   return {
@@ -23,7 +18,6 @@ vi.mock('./translator-fetcher', async (importOriginal) => {
 })
 
 import pinJson from '../../translator-bundle-pin.json' with { type: 'json' }
-import { listBundledTranslators } from './translator-bundle'
 import {
   fetchManifest,
   fetchTranslatorFromCdn,
@@ -38,11 +32,14 @@ import {
 
 // ────────────────────────────────────────────────────────────────────────
 // Fixtures: use real pinned UUIDs so pin.bundleHashes lookups succeed.
+// After the M4 fix, the refresh module iterates over Object.entries(pin.bundleHashes)
+// directly (no longer calls listBundledTranslators). The tests pick specific
+// UUIDs to mock manifest entries against; UUIDs NOT in the manifest mock get
+// "absent from upstream manifest" warn + skip (which is the correct behavior
+// and doesn't affect assertions).
 // ────────────────────────────────────────────────────────────────────────
 
 const PINNED_UUIDS = Object.keys(pinJson.bundleHashes) as string[]
-// Three UUIDs with distinct pin SHAs — picked from the front of the pin
-// for stability; any three with non-equal pins would do.
 const UUID_NOOP = PINNED_UUIDS[0]
 const UUID_DIFF = PINNED_UUIDS[1]
 const UUID_ABSENT = PINNED_UUIDS[2]
@@ -83,10 +80,18 @@ function fakeManifest(entries: ManifestEntry[]): Manifest {
 
 interface MockStorage {
   data: Map<string, unknown>
+  setMock: ReturnType<typeof vi.fn>
 }
 
-function installChromeStorageMock(): MockStorage {
+function installChromeStorageMock(opts: { setRejects?: Error } = {}): MockStorage {
   const data = new Map<string, unknown>()
+  const setMock = opts.setRejects
+    ? vi.fn(async () => {
+        throw opts.setRejects
+      })
+    : vi.fn(async (items: Record<string, unknown>) => {
+        for (const [k, v] of Object.entries(items)) data.set(k, v)
+      })
   const chromeMock = {
     storage: {
       local: {
@@ -97,9 +102,7 @@ function installChromeStorageMock(): MockStorage {
           for (const k of arr) if (data.has(k)) out[k] = data.get(k)
           return out
         }),
-        set: vi.fn(async (items: Record<string, unknown>) => {
-          for (const [k, v] of Object.entries(items)) data.set(k, v)
-        }),
+        set: setMock,
         remove: vi.fn(async (keys: string | string[]) => {
           const arr = Array.isArray(keys) ? keys : [keys]
           for (const k of arr) data.delete(k)
@@ -108,7 +111,7 @@ function installChromeStorageMock(): MockStorage {
     },
   }
   ;(globalThis as { chrome?: unknown }).chrome = chromeMock
-  return { data }
+  return { data, setMock }
 }
 
 function uninstallChromeStorageMock(): void {
@@ -124,15 +127,12 @@ describe('refreshBundledTranslators — happy path (AC4)', () => {
 
   beforeEach(() => {
     storage = installChromeStorageMock()
-    vi.mocked(listBundledTranslators).mockReturnValue([
-      fakeBundled(UUID_NOOP),
-      fakeBundled(UUID_DIFF),
-      fakeBundled(UUID_ABSENT),
-    ])
     // Manifest:
     //   UUID_NOOP   → sha = pin (no-op)
     //   UUID_DIFF   → sha = "DIFFERENT" (triggers per-translator fetch)
-    //   UUID_ABSENT → absent
+    //   UUID_ABSENT → absent (along with all the other ~31 pinned UUIDs;
+    //                 they all warn + skip — verified separately via
+    //                 fetchTranslatorFromCdn call count)
     vi.mocked(fetchManifest).mockResolvedValue(
       fakeManifest([
         fakeManifestEntry(UUID_NOOP, PIN_BY_UUID[UUID_NOOP]),
@@ -179,7 +179,6 @@ describe('refreshBundledTranslators — manifest-fetch failure (AC7)', () => {
 
   beforeEach(() => {
     storage = installChromeStorageMock()
-    vi.mocked(listBundledTranslators).mockReturnValue([fakeBundled(UUID_DIFF)])
     vi.mocked(fetchManifest).mockRejectedValue(
       new TranslatorFetcherError('NETWORK_ERROR', 'offline'),
     )
@@ -214,7 +213,6 @@ describe('refreshBundledTranslators — signature-invalid is the trap (AC7 CRITI
 
   beforeEach(() => {
     storage = installChromeStorageMock()
-    vi.mocked(listBundledTranslators).mockReturnValue([fakeBundled(UUID_DIFF)])
     vi.mocked(fetchManifest).mockRejectedValue(
       new TranslatorFetcherError('SIGNATURE_INVALID', 'tampered'),
     )
@@ -234,10 +232,6 @@ describe('refreshBundledTranslators — signature-invalid is the trap (AC7 CRITI
   })
 
   it('on signature-invalid, leaves any previously-cached translator entries UNTOUCHED', async () => {
-    // Pre-seed a cached translator entry. Refresh failing on signature
-    // must NOT evict / overwrite it — the cached entry remains usable
-    // by future runtime resolves (which re-verify against the next valid
-    // manifest).
     storage.data.set('translator-fetched:cache-survivor', { metadata: {}, body: 'x', sha256: 'y', fetchedAt: 1 })
     await refreshBundledTranslators()
     expect(storage.data.has('translator-fetched:cache-survivor')).toBe(true)
@@ -247,10 +241,6 @@ describe('refreshBundledTranslators — signature-invalid is the trap (AC7 CRITI
 describe('refreshBundledTranslators — partial (per-translator failure, AC7)', () => {
   beforeEach(() => {
     installChromeStorageMock()
-    vi.mocked(listBundledTranslators).mockReturnValue([
-      fakeBundled(UUID_DIFF),
-      fakeBundled(UUID_NOOP),
-    ])
     vi.mocked(fetchManifest).mockResolvedValue(
       fakeManifest([
         fakeManifestEntry(UUID_DIFF, 'DIFFERENT_SHA_FROM_PIN'),
@@ -280,7 +270,6 @@ describe('refreshBundledTranslators — partial (per-translator failure, AC7)', 
 describe('refreshBundledTranslators — translator absent from manifest (AC4 graceful degradation)', () => {
   beforeEach(() => {
     installChromeStorageMock()
-    vi.mocked(listBundledTranslators).mockReturnValue([fakeBundled(UUID_ABSENT)])
     vi.mocked(fetchManifest).mockResolvedValue(fakeManifest([]))
   })
 
@@ -295,5 +284,54 @@ describe('refreshBundledTranslators — translator absent from manifest (AC4 gra
     expect(result.lastRefreshResult).toBe('success')
     expect(result.updatedCount).toBe(0)
     expect(vi.mocked(fetchTranslatorFromCdn)).not.toHaveBeenCalled()
+    // Cite UUID_ABSENT to keep the import used (signals intent — this fixture
+    // represents "any pinned UUID for which the manifest has no entry").
+    expect(UUID_ABSENT).toBeDefined()
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────────
+// Code-review H2 fix (2026-05-18): storage-write failures during state
+// persistence must NOT propagate out of refreshBundledTranslators. AC7
+// makes failure modes non-fatal; a chrome.storage.local.set throw (quota
+// exceeded, extension shutdown, policy-disabled storage) would otherwise
+// land in sw-handlers.refreshSafely's catch as an unexpected exception
+// and risk marking the SW errored — breaking subsequent alarm dispatch.
+// ────────────────────────────────────────────────────────────────────────
+
+describe('refreshBundledTranslators — storage-write failure tolerance (H2 fix)', () => {
+  afterEach(() => {
+    uninstallChromeStorageMock()
+    vi.restoreAllMocks()
+    vi.clearAllMocks()
+  })
+
+  it('does NOT throw when chrome.storage.local.set rejects on the success path', async () => {
+    installChromeStorageMock({ setRejects: new Error('QUOTA_BYTES exceeded') })
+    vi.mocked(fetchManifest).mockResolvedValue(
+      fakeManifest([fakeManifestEntry(UUID_NOOP, PIN_BY_UUID[UUID_NOOP])]),
+    )
+    const result = await refreshBundledTranslators()
+    // In-memory result still returned correctly; only the persisted state is lost.
+    expect(result.lastRefreshResult).toBe('success')
+    expect(result.updatedCount).toBe(0)
+  })
+
+  it('does NOT throw when storage.set rejects on the manifest-fetch-failed path', async () => {
+    installChromeStorageMock({ setRejects: new Error('storage gone') })
+    vi.mocked(fetchManifest).mockRejectedValue(
+      new TranslatorFetcherError('NETWORK_ERROR', 'offline'),
+    )
+    const result = await refreshBundledTranslators()
+    expect(result.lastRefreshResult).toBe('manifest-fetch-failed')
+  })
+
+  it('does NOT throw when storage.set rejects on the signature-invalid path', async () => {
+    installChromeStorageMock({ setRejects: new Error('storage gone') })
+    vi.mocked(fetchManifest).mockRejectedValue(
+      new TranslatorFetcherError('SIGNATURE_INVALID', 'tampered'),
+    )
+    const result = await refreshBundledTranslators()
+    expect(result.lastRefreshResult).toBe('signature-invalid')
   })
 })
