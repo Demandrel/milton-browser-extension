@@ -1,6 +1,6 @@
 # Story BE-8.7: Class 2 capture — client-side PDF bytes upload
 
-Status: review
+Status: done
 
 Origin: Charter v2 (`_bmad-output/planning-artifacts/charter-v2.md`) — Story Map row BE-8-7 (line 121), architecture diagram lines 80-86 (Class 2 cookie/session-gated PDF flow), Decision 5 (two-step IPC wire shape — `POST /references` then `POST /references/{id}/pdf-bytes`), Decision 8 (BE-7 backwards compatibility — `pdfUrl` survives; bytes-upload added on top), Risks table line 151 (Class 2 cookie/session sharing varies between Chromium variants — smoke matrix covers Chrome / Edge / Brave), Success Criteria #1 (Coverage gate — Class 2/3 captures from every site named in the brief). The sprint-status row name (`BE-8-7-class-2-capture-and-paste-failure-ux`) bundles a Milton-desktop UX surface that has been **scoped out** of this story per Pierre's create-story Q1 decision (2026-05-17) — see "Out of scope" below.
 Depends on: **BE-8-2** (Milton-saas, done — `POST /references/{id}/pdf-bytes` endpoint, 50 MiB cap, raw `application/pdf` body, `attached` / `already_attached` envelope, scoped race-safe UPDATE); **BE-8-6** (this repo, done — popup state machine extensions, `chrome.scripting.executeScript`, offscreen sandbox, `extractMetadata` fallback path).
