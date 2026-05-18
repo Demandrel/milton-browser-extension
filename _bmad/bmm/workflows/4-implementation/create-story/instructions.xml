@@ -13,21 +13,26 @@
     This is the most important function in the entire development process!</critical>
   <critical>🔬 UTILIZE SUBPROCESSES AND SUBAGENTS: Use research subagents, subprocesses or parallel processing if available to thoroughly
     analyze different artifacts simultaneously and thoroughly</critical>
-  <critical>❓ SAVE QUESTIONS: If you think of questions or clarifications during analysis, save them for the end after the complete story is
-    written</critical>
-  <critical>🎯 ZERO USER INTERVENTION: Process should be fully automated except for initial epic/story selection or missing documents</critical>
 
-  <critical>🔧 PIERRE-CUSTOMIZED DEFAULT FLOW (codified 2026-05-16 in milton-browser-extension; see memory [[feedback-create-story-default-flow]]):
+  <critical>🔧 PIERRE-CUSTOMIZED DEFAULT FLOW (codified 2026-05-16 in milton-browser-extension; upgraded 2026-05-18 with explicit pre-draft
+    question batch — see memory [[feedback-create-story-default-flow]]):
     The workflow.xml runner's substep 2c per-template-output `[a] Advanced Elicitation, [c] Continue, [p] Party-Mode, [y] YOLO` ask is
-    SUPPRESSED for this workflow. Template-output tags save content silently via Write/Edit; do NOT present the per-section prompt. After ALL
-    step 5 template-outputs are complete, step 6 (NEW) auto-runs advanced-elicitation method 17 (Red Team vs Blue Team) on the FULL drafted
-    story and auto-applies the blue-team hardening edits without per-change confirmation. Step 7 (NEW) asks Pierre once for final
-    ready-for-dev validation. Step 8 (was step 6) handles sprint-status update + completion report. To override (per-section elicitation
-    instead of auto-method-17), Pierre says "use per-section elicitation" before the workflow begins.</critical>
-  <critical>🔧 DURING DRAFT: If during step 5 you encounter a load-bearing architectural choice the dev-agent should NOT be left to decide
-    alone (e.g., contradicts a saved feedback memory, has multi-week downstream impact, depends on an external decision Pierre has unique
-    context for) — PAUSE and ask Pierre via AskUserQuestion. Save trivia / dev-discretion choices for the story file's "open decisions"
-    section rather than asking each.</critical>
+    SUPPRESSED for this workflow. Template-output tags save content silently via Write/Edit; do NOT present the per-section prompt. The
+    user-facing dialogue is concentrated at THREE points: (1) Step 1 story selection, (2) NEW Step 5 pre-draft question batch — proactively
+    surface ALL important decisions BEFORE drafting, (3) Step 8 final ready-for-dev validation. After Step 6 (draft) completes, Step 7 (NEW)
+    auto-runs advanced-elicitation method 17 (Red Team vs Blue Team) on the FULL drafted story and auto-applies the blue-team hardening
+    edits without per-change confirmation. Step 8 is Pierre's one validation gate. Step 9 (was step 6 upstream) handles sprint-status update
+    + completion report. To override (per-section elicitation instead of auto-method-17), Pierre says "use per-section elicitation" before
+    the workflow begins.</critical>
+  <critical>🔧 ASK PROACTIVELY (Step 5 — NEW). After artifact discovery (Steps 2-4) but BEFORE drafting (Step 6), identify EVERY important
+    question and ask Pierre in a batch via AskUserQuestion (max 4 questions per call; chain multiple calls if needed). "Important" = anything
+    where two reasonable implementations exist OR where Pierre has unique context the artifacts don't reveal OR where the choice has
+    multi-week downstream impact OR where the AC could be interpreted multiple ways. DO NOT save these for the story file's "open
+    decisions" section — that's the lazy default that produces a Pierre-can't-course-correct one-shot draft. Trivia (variable name choice,
+    minor refactor preference, etc.) CAN be deferred to dev-agent discretion; everything load-bearing surfaces here.</critical>
+  <critical>🔧 DURING DRAFT (Step 6): once question batch is complete, write the COMPLETE story file in one or a few Write/Edit operations.
+    Per-section [a/c/p/y] asks are SUPPRESSED. If a new load-bearing choice surfaces mid-draft that wasn't anticipated in Step 5, PAUSE and
+    ask via AskUserQuestion. Do not bulldoze through novel critical decisions just because you're already drafting.</critical>
 
   <step n="1" goal="Determine target story">
     <check if="{{story_path}} is provided by user or user provided the epic and story number such as 2-4 or 1.6 or epic 1 story 5">
@@ -268,8 +273,52 @@
     </action>
   </step>
 
-  <step n="5" goal="Create comprehensive story file">
+  <step n="5" goal="Pre-draft question batch — ask Pierre all important decisions BEFORE drafting">
+    <critical>🛑 MANDATORY USER-FACING STEP. Do NOT skip even if the discovery seems comprehensive. The point is to let Pierre course-correct
+      load-bearing decisions BEFORE 500+ lines of story are baked in.</critical>
+    <critical>📋 OUTPUT FORMAT: AskUserQuestion (multiSelect optional per question). Max 4 questions per call. Chain multiple sequential calls
+      if you have more than 4. Each question presents 2-4 concrete options + "Other" appears automatically.</critical>
+
+    <action>Identify ALL important questions from artifact discovery. Categories to scan (not all required; pick what fits the story):
+      - **Scope cut-lines:** which adjacent surfaces are IN vs OUT (e.g., backend only? frontend included? tests in this story or follow-up?)
+      - **AC interpretation:** when an AC could be implemented two reasonable ways, ask which
+      - **Alternative implementations:** if discovery surfaced multiple architectural patterns (e.g., transparent fallback vs parallel IPC),
+        ask which Pierre prefers — include the trade-offs in the question description
+      - **Edge case handling:** when an edge case has multiple defensible behaviors, ask which to specify in AC
+      - **External dependencies:** confirm pinned versions, API contracts, third-party service choices when there's genuine optionality
+      - **Memory-rule conflicts:** if drafting would technically follow discovery but contradict a saved feedback memory, surface the
+        conflict and ask which path to take
+      - **Risk tolerance:** if the story has a known risk (perf budget, smoke gate, fallback behavior), confirm tolerance level
+      - **Test strategy:** when test scope has genuine optionality (mock vs integration; how exhaustive), confirm Pierre's preference
+      - **Smoke walkthrough specifics:** if G17-1 smoke applies, confirm which canonical test inputs Pierre wants enumerated
+      - **Story boundary:** if discovery suggests scope creep risk (this story bleeds into N+1), confirm the cut-line
+    </action>
+
+    <action>For each identified question: phrase it as a CLEAR decision question (not a yes/no open-ended ask), name the 2-4 best concrete
+      options (with one-line rationale per option in the option description), recommend a first option if you have a defensible recommendation
+      (label it "(Recommended)"). Trivia (variable name choice, minor refactor preference, dev-agent-discretion-class decisions) belong in
+      the story file's "Open decisions" section — NOT in this batch.</action>
+
+    <action>Invoke AskUserQuestion with up to 4 questions per call. If you have more than 4 important questions, chain calls sequentially
+      (call 1 → wait for answers → call 2 → wait for answers → etc.). After the LAST batch's answers arrive, summarize back to Pierre: "Got
+      it. Drafting with: [terse list of resolved decisions]."</action>
+
+    <action>Incorporate Pierre's answers into the draft you're about to write in Step 6. Decisions that diverge from your recommendation get
+      explicit "per Pierre decision 2026-MM-DD" attribution in the story file's Dev Notes so the dev-agent knows the decision is load-bearing.</action>
+
+    <check if="no important questions surfaced">
+      <action>Skip the AskUserQuestion invocation, but explicitly state to user: "No load-bearing decisions surfaced in discovery — all
+        questions are dev-agent discretion. Drafting directly." This is rare for non-trivial stories; if you find yourself here, sanity-check
+        the discovery wasn't shallow.</action>
+    </check>
+  </step>
+
+  <step n="6" goal="Create comprehensive story file">
     <critical>📝 CREATE ULTIMATE STORY FILE - The developer's master implementation guide!</critical>
+    <critical>🔇 PER-SECTION ASKS SUPPRESSED. Do NOT present [a/c/p/y] after each template-output. Write the COMPLETE story file in one or a
+      few Write/Edit operations. If a new load-bearing decision surfaces mid-draft that wasn't anticipated in Step 5, PAUSE and ask via
+      AskUserQuestion — but do NOT pause for non-load-bearing choices (those go into the story file's "Open decisions" section as dev-agent
+      discretion).</critical>
 
     <action>Initialize from template.md:
     {default_output_file}</action>
@@ -316,19 +365,19 @@
     story_completion_status</template-output>
 
     <!-- CRITICAL: Set story Status field in the file to: "ready-for-dev" -->
-    <!-- Note: this is the DRAFT status; step 7 confirms with Pierre before step 8 flips sprint-status -->
+    <!-- Note: this is the DRAFT status; step 8 confirms with Pierre before step 9 flips sprint-status -->
     <action>Set story Status to: "ready-for-dev"</action>
     <action>Add completion note: "Ultimate
     context engine analysis completed - comprehensive developer guide created"</action>
   </step>
 
-  <step n="6" goal="Auto-apply Red Team vs Blue Team elicitation (method 17)">
+  <step n="7" goal="Auto-apply Red Team vs Blue Team elicitation (method 17)">
     <critical>🔴🔵 AUTO-RUN — DO NOT ASK USER WHETHER TO RUN THIS. Pierre's default flow always runs method 17 on every drafted story.</critical>
     <critical>📂 Load method 17 from {project-root}/_bmad/core/workflows/advanced-elicitation/methods.csv ("Red Team vs Blue Team — Adversarial
       attack-defend analysis to find vulnerabilities — critical for security testing and building robust solutions. Pattern: defense → attack
       → hardening").</critical>
 
-    <action>Re-read the COMPLETE drafted story file at {{default_output_file}} to get the final state after all step 5 template-outputs</action>
+    <action>Re-read the COMPLETE drafted story file at {{default_output_file}} to get the final state after all step 6 template-outputs</action>
 
     <action>**Red Team pass** — Adopt an adversarial reviewer persona. Identify 5-12 specific weaknesses in the story that would cause
       dev-story execution to fail, drift, or produce a low-quality result. Categories to scan (not all required; pick what fits):
@@ -351,32 +400,32 @@
       a timebox added, etc. Do NOT propose "consider this" — propose the actual text change.</action>
 
     <action>**Auto-apply ALL blue-team edits** to the story file via Edit operations. Do NOT ask the user [y/n] per change. Pierre's safety net
-      is step 7's final validation, not per-change gating.</action>
+      is step 8's final validation, not per-change gating.</action>
 
     <action>Add a Change Log entry at the bottom of the story file:
       "| {{today}} | Claude ({{agent_model_name_version}}, BMad SM workflow auto-method-17) | Red Team vs Blue Team elicitation applied
       automatically per Pierre-customized default flow. N hardening edits applied across AC/Task/Dev-Notes sections. Red-team attack
-      summary: [one-line per attack]. Story still ready-for-dev pending Pierre's step 7 validation. |"
+      summary: [one-line per attack]. Story still ready-for-dev pending Pierre's step 8 validation. |"
       Where N = count of edits applied. Replace [one-line per attack] with the actual list.</action>
 
     <action>Display to user a CONCISE summary: "Red Team vs Blue Team applied: N attacks → N hardening edits. Key changes: [bullet list of
       3-5 most impactful changes]. Full diff in story file Change Log."</action>
   </step>
 
-  <step n="7" goal="Final ready-for-dev validation by Pierre">
-    <critical>🛑 THIS IS THE ONE AND ONLY USER-FACING ASK FOR THIS WORKFLOW (apart from step 1 epic/story selection + any step 5 critical-choice
-      pauses).</critical>
+  <step n="8" goal="Final ready-for-dev validation by Pierre">
+    <critical>🛑 THIS IS THE ONE AND ONLY USER-FACING ASK FOR THIS WORKFLOW (apart from step 1 epic/story selection, step 5 question batch,
+      and any step 6 critical-choice pauses).</critical>
 
     <action>Use AskUserQuestion to ask Pierre: "Story drafted + auto-hardened via Red Team vs Blue Team (method 17). Review at
       {{default_output_file}}. Ready to flip sprint-status to ready-for-dev?" Options:
-      [1] Yes — flip to ready-for-dev (proceed to step 8)
+      [1] Yes — flip to ready-for-dev (proceed to step 9)
       [2] Edit first — describe the edit (Pierre provides edit instructions via Other; you apply them via Edit; re-present this validation
       question after applying)
       [3] Discard story file — abort the workflow without flipping sprint-status (rare; use for cases where Pierre decides the story
       shouldn't exist at all)</action>
 
     <check if="user response is [1] Yes">
-      <action>Proceed to step 8</action>
+      <action>Proceed to step 9</action>
     </check>
 
     <check if="user response is [2] Edit first">
@@ -389,11 +438,11 @@
       <action>Delete the story file via Bash `rm {{default_output_file}}`</action>
       <action>Do NOT update sprint-status (story key remains `backlog`)</action>
       <action>Report aborted to user</action>
-      <action>HALT — skip step 8</action>
+      <action>HALT — skip step 9</action>
     </check>
   </step>
 
-  <step n="8" goal="Update sprint status and finalize">
+  <step n="9" goal="Update sprint status and finalize">
     <invoke-task>Validate against checklist at {installed_path}/checklist.md using _bmad/core/tasks/validate-workflow.xml</invoke-task>
     <action>Save story document unconditionally</action>
 

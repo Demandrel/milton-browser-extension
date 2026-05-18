@@ -81,6 +81,28 @@ Codified 2026-05-16 in Milton-saas after an audit found 80 CI runs / 995 minutes
 
 ---
 
+## BMAD `/bmad_bmm_create-story` — Pierre-customized 9-step flow (ABSOLUTE — applies every Milton repo, worktree, branch, epic)
+
+Codified 2026-05-16 in this repo (BE-8-4 drafting); upgraded 2026-05-18 with explicit pre-draft question batch (Step 5) and uniformly ported to Milton-saas. Encoded in `_bmad/bmm/workflows/4-implementation/create-story/instructions.xml`; memory backup at `feedback_create_story_default_flow.md`. Both repos now have byte-identical workflow files (modulo whitespace) — keep them in sync if either is edited.
+
+**Flow shape:**
+
+1. **Step 1** — Resolve story key (only ASK if ambiguous; e.g., "BE-4" matches a done Sprint 1 story but context implies BE-8-4).
+2. **Steps 2-4** — Discovery (artifacts, architecture, web research). Silent.
+3. **Step 5 — Pre-draft question batch (MANDATORY).** After discovery, BEFORE drafting, identify ALL important decisions and ask Pierre in a batch via `AskUserQuestion` (max 4 per call; chain multiple sequential calls if needed). "Important" = anything where two reasonable implementations exist, Pierre has unique context the artifacts don't reveal, the choice has multi-week downstream impact, or the AC could be interpreted multiple ways. Trivia → story file's "Open decisions" section as dev-agent discretion.
+4. **Step 6 — Draft.** Write the COMPLETE story file in one or a few Write/Edit operations. **Per-section `[a]/[c]/[p]/[y]` asks are SUPPRESSED** — do NOT present them after every `<template-output>` tag (workflow.xml's substep 2c is overridden for this workflow). PAUSE mid-draft only if a NEW load-bearing decision surfaces that wasn't anticipated in Step 5.
+5. **Step 7 — Auto Red Team vs Blue Team (advanced-elicitation method 17).** Re-read the full draft. Adopt red-team adversarial reviewer persona → identify 5-12 weaknesses (ambiguous AC, missing edge case, hidden assumption, scope creep, test gap, integration risk, etc.). Adopt blue-team defender persona → propose one concrete Edit per attack. **AUTO-APPLY all blue-team edits** via Edit operations. NO per-change `y/n` ask (Pierre's safety net is Step 8). Add Change Log entry summarizing the pass.
+6. **Step 8 — Final validation (ONE `AskUserQuestion`).** Options: `[1] Yes, flip to ready-for-dev`, `[2] Edit first — describe edit` (loop), `[3] Discard story file` (HALT, no sprint-status update).
+7. **Step 9** — Sprint-status update + completion report.
+
+**Override:** Pierre saying "use per-section elicitation" (or similar) before/during the workflow falls back to the upstream BMAD per-template-output asks.
+
+**Trigger phrases to STOP on (in own output):** "Writing the story now" / "Drafting the file" / "Story file written" — if these appear without a preceding `AskUserQuestion` Step 5 batch AND a planned Step 8 validation, this is a process violation.
+
+**Applies to:** `/bmad_bmm_create-story` specifically. Other BMAD workflows (dev-story, code-review, sprint-planning, retrospective, etc.) keep their upstream default elicitation patterns unless explicitly extended in a separate rule.
+
+---
+
 ## Project Context
 
 - **Project:** milton-browser-extension — Chromium MV3 browser extension that captures academic references and sends them to Milton's local connector
