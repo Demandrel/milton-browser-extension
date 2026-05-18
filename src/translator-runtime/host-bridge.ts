@@ -109,6 +109,7 @@ export function makeTranslateRequest(args: {
   translatorId: string
   html?: string
   timeoutMs?: number
+  inlineTranslator?: BundledTranslator
 }): TranslateRequest {
   return {
     type: 'translate-request',
@@ -118,6 +119,7 @@ export function makeTranslateRequest(args: {
     translatorId: args.translatorId,
     html: args.html,
     timeoutMs: args.timeoutMs,
+    inlineTranslator: args.inlineTranslator,
   }
 }
 

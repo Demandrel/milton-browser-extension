@@ -5,15 +5,19 @@
 // See COPYING for license terms.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import pinJson from '../../translator-bundle-pin.json' with { type: 'json' }
 import {
   _resetForTests,
   _setVerifiedSet,
   getBundledTranslator,
+  getResolvedTranslator,
   listBundledTranslatorIDs,
   verifyAllBundleIntegrity,
 } from './translator-bundle'
+import type { Manifest, ManifestEntry } from './translator-fetcher'
 
 const ARXIV_ID = 'ecddda2e-4fc6-4aea-9f17-ef3b56d7377a'
+const ARXIV_PIN_SHA = (pinJson.bundleHashes as Record<string, string>)[ARXIV_ID]
 
 describe('translator-bundle', () => {
   // Most tests want the production-like flow: integrity verified + set
@@ -118,5 +122,153 @@ describe('translator-bundle integrity (AC6)', () => {
     const verified = await verifyAllBundleIntegrity()
     _setVerifiedSet(verified)
     expect(getBundledTranslator('00000000-0000-0000-0000-000000000000')).toBeNull()
+  })
+})
+
+// ─── BE-8-9 AC5: cached-fresher resolver ─────────────────────────────────
+
+describe('getResolvedTranslator — three-way cached / pin / manifest decision (AC5)', () => {
+  function makeManifestEntry(uuid: string, sha256: string): ManifestEntry {
+    return {
+      translatorID: uuid,
+      label: 'arXiv.org',
+      sha256,
+      size_bytes: 100,
+      priority: 100,
+      translatorType: 4,
+      lastUpdated: '2024-01-01',
+    }
+  }
+
+  function makeManifest(entries: ManifestEntry[]): Manifest {
+    return {
+      schema_version: '1',
+      mirror: 'test',
+      generated_at: '2024-01-01',
+      upstream_commit: 'test',
+      upstream_source: 'test',
+      license: 'AGPL-3.0-or-later',
+      signature_url: 'test.sig',
+      translators: entries,
+    }
+  }
+
+  function installChromeStorage(): Map<string, unknown> {
+    const data = new Map<string, unknown>()
+    ;(globalThis as { chrome?: unknown }).chrome = {
+      storage: {
+        local: {
+          get: vi.fn(async (key: string) => {
+            const out: Record<string, unknown> = {}
+            if (data.has(key)) out[key] = data.get(key)
+            return out
+          }),
+        },
+      },
+    }
+    return data
+  }
+
+  beforeEach(async () => {
+    _resetForTests()
+    const verified = await verifyAllBundleIntegrity()
+    _setVerifiedSet(verified)
+  })
+
+  afterEach(() => {
+    delete (globalThis as { chrome?: unknown }).chrome
+    vi.restoreAllMocks()
+  })
+
+  it('returns CACHED fresher when cached sha256 matches manifest entry AND differs from bundle pin', async () => {
+    const data = installChromeStorage()
+    const NEW_SHA = 'b'.repeat(64)
+    data.set(`translator-fetched:${ARXIV_ID}`, {
+      metadata: { translatorID: ARXIV_ID, label: 'arXiv.org (fresher)' },
+      body: '/* CACHED FRESHER BODY */',
+      sha256: NEW_SHA,
+      fetchedAt: Date.now(),
+    })
+    const manifest = makeManifest([makeManifestEntry(ARXIV_ID, NEW_SHA)])
+    const resolved = await getResolvedTranslator(ARXIV_ID, manifest)
+    expect(resolved).not.toBeNull()
+    expect(resolved!.body).toBe('/* CACHED FRESHER BODY */')
+    expect(resolved!.metadata.label).toBe('arXiv.org (fresher)')
+  })
+
+  it('falls through to BUNDLED when manifest sha matches pin (bundled is current; no-op case)', async () => {
+    // Even with a cached entry present, when manifest === pin the bundled
+    // version is current and the cached check short-circuits.
+    const data = installChromeStorage()
+    data.set(`translator-fetched:${ARXIV_ID}`, {
+      metadata: { translatorID: ARXIV_ID, label: 'wrong-label' },
+      body: '/* cached body (ignored — manifest matches pin) */',
+      sha256: ARXIV_PIN_SHA,
+      fetchedAt: Date.now(),
+    })
+    const manifest = makeManifest([makeManifestEntry(ARXIV_ID, ARXIV_PIN_SHA)])
+    const resolved = await getResolvedTranslator(ARXIV_ID, manifest)
+    expect(resolved).not.toBeNull()
+    expect(resolved!.metadata.label).toBe('arXiv.org') // real bundled label
+  })
+
+  it('falls through to BUNDLED when cached sha differs from manifest entry (stale-cache case)', async () => {
+    // Manifest says newest sha = X, but cached sha = Y (stale entry from
+    // earlier refresh, then upstream rolled forward). Cached entry is not
+    // trusted; bundled version is served.
+    const data = installChromeStorage()
+    data.set(`translator-fetched:${ARXIV_ID}`, {
+      metadata: { translatorID: ARXIV_ID, label: 'stale-cached' },
+      body: '/* stale cached body — must NOT win */',
+      sha256: 'a'.repeat(64),
+      fetchedAt: Date.now(),
+    })
+    const manifest = makeManifest([makeManifestEntry(ARXIV_ID, 'b'.repeat(64))])
+    const resolved = await getResolvedTranslator(ARXIV_ID, manifest)
+    expect(resolved).not.toBeNull()
+    expect(resolved!.metadata.label).toBe('arXiv.org')
+  })
+
+  it('falls through to BUNDLED when currentManifest === null (degraded mode, AC9)', async () => {
+    // Even with a "cached-fresher" entry present, null manifest means we
+    // skip the cached check entirely. Bundled wins.
+    const data = installChromeStorage()
+    data.set(`translator-fetched:${ARXIV_ID}`, {
+      metadata: { translatorID: ARXIV_ID, label: 'cached-but-no-manifest' },
+      body: '/* cached body but no manifest to validate against */',
+      sha256: 'b'.repeat(64),
+      fetchedAt: Date.now(),
+    })
+    const resolved = await getResolvedTranslator(ARXIV_ID, null)
+    expect(resolved).not.toBeNull()
+    expect(resolved!.metadata.label).toBe('arXiv.org')
+  })
+
+  it('returns null when UUID is in neither bundle nor cache', async () => {
+    installChromeStorage()
+    const unknownUuid = '00000000-0000-0000-0000-000000000000'
+    const manifest = makeManifest([makeManifestEntry(unknownUuid, 'a'.repeat(64))])
+    const resolved = await getResolvedTranslator(unknownUuid, manifest)
+    expect(resolved).toBeNull()
+  })
+
+  it('falls through to BUNDLED when manifest entry is missing for the UUID (manifest-deleted case)', async () => {
+    // Bundled UUID present, but upstream removed the entry from the manifest
+    // (rare — would mean Zotero deleted the translator). Bundled stays.
+    installChromeStorage()
+    const manifest = makeManifest([])
+    const resolved = await getResolvedTranslator(ARXIV_ID, manifest)
+    expect(resolved).not.toBeNull()
+    expect(resolved!.metadata.label).toBe('arXiv.org')
+  })
+
+  it('falls through to BUNDLED when chrome.storage is unavailable (sandbox-like context)', async () => {
+    // No installChromeStorage call → chrome is undefined.
+    delete (globalThis as { chrome?: unknown }).chrome
+    const NEW_SHA = 'b'.repeat(64)
+    const manifest = makeManifest([makeManifestEntry(ARXIV_ID, NEW_SHA)])
+    const resolved = await getResolvedTranslator(ARXIV_ID, manifest)
+    expect(resolved).not.toBeNull()
+    expect(resolved!.metadata.label).toBe('arXiv.org')
   })
 })

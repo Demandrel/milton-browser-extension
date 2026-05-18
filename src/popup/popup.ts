@@ -39,6 +39,7 @@ import type {
 import { findCandidateTranslatorIds } from '../translator-runtime/translator-router'
 import { listBundledTranslators } from '../translator-runtime/translator-bundle'
 import { fetchManifest } from '../translator-runtime/translator-fetcher'
+import { maybeInlineFresherTranslator } from '../translator-runtime/popup-translator-resolve'
 import type { ZoteroItem } from '../translator-runtime/zotero-types'
 import {
   applyGenericWebpageDefaults,
@@ -532,6 +533,10 @@ async function tryClientTranslator(url: string, candidateIds: string[]): Promise
   // Fire client translation via offscreen.
   translatorAbort = new AbortController()
   translatorRequestId = crypto.randomUUID()
+  // BE-8-9: check whether the SW's periodic refresh has cached a fresher
+  // version of this bundled translator. Best-effort — undefined on any
+  // failure or no-op case; sandbox falls back to its bundled lookup.
+  const inlineTranslator = await maybeInlineFresherTranslator(translatorId)
   let items: ZoteroItem[]
   try {
     items = await requestClientTranslation({
@@ -540,6 +545,7 @@ async function tryClientTranslator(url: string, candidateIds: string[]): Promise
       translatorId,
       requestId: translatorRequestId,
       signal: translatorAbort.signal,
+      inlineTranslator,
     })
   } catch (err) {
     const code = err instanceof OffscreenClientError ? err.code : 'UNKNOWN'
@@ -713,11 +719,13 @@ if (import.meta.env.DEV) {
       if (candidates.length === 0) return { source: 'no-match' }
       const resp = await fetch(url, { credentials: 'omit' })
       const html = await resp.text()
+      const inlineTranslator = await maybeInlineFresherTranslator(candidates[0])
       const items = await requestClientTranslation({
         url,
         html,
         translatorId: candidates[0],
         requestId: crypto.randomUUID(),
+        inlineTranslator,
       })
       return { source: 'client-translator', items }
     }

@@ -53,6 +53,7 @@ import { installZoteroItemSaver, translateWithTimeout, TranslatorTimeoutError } 
 import {
   _setVerifiedSet,
   getBundledTranslator,
+  getResolvedTranslator,
   listBundledTranslatorIDs,
   verifyAllBundleIntegrity,
 } from './translator-bundle'
@@ -64,7 +65,7 @@ import {
   PROTOCOL_VERSION,
 } from './host-bridge'
 import { loadTranslatorFromParent } from './sandbox-fallback'
-import type { ZoteroGlobal, ZoteroItem } from './zotero-types'
+import type { BundledTranslator, ZoteroGlobal, ZoteroItem } from './zotero-types'
 
 const FRAMEWORK_SOURCES: ReadonlyArray<[string, string]> = [
   ['src/zotero.js', zoteroJs],
@@ -207,12 +208,29 @@ interface RunTranslationArgs {
   translatorId: string
   html?: string
   timeoutMs?: number
+  // BE-8-9: optional pre-resolved cached-fresher body forwarded from popup
+  // → offscreen → sandbox. When present, sandbox uses it directly instead
+  // of consulting the build-time bundled lookup. Sandbox has no
+  // chrome.storage access (opaque origin) so this inline path is the only
+  // way the cached-fresher entry can reach the sandbox.
+  inlineTranslator?: BundledTranslator
 }
 
 async function runTranslation(args: RunTranslationArgs): Promise<ZoteroItem[]> {
-  console.log('[milton-sandbox] runTranslation start', { url: args.url, translatorId: args.translatorId, hasHtml: args.html !== undefined })
+  console.log('[milton-sandbox] runTranslation start', { url: args.url, translatorId: args.translatorId, hasHtml: args.html !== undefined, hasInline: args.inlineTranslator !== undefined })
   const Zotero = getZotero()
-  let bundled = getBundledTranslator(args.translatorId)
+  let bundled: BundledTranslator | null
+  if (args.inlineTranslator !== undefined) {
+    bundled = args.inlineTranslator
+    console.log('[milton-sandbox] using popup-supplied inline translator (cached-fresher win)', bundled.metadata.label)
+  } else {
+    // Pass currentManifest=null — the sandbox runs at opaque origin and
+    // cannot fetch the manifest itself (CSP + can't read chrome.storage).
+    // The cached-fresher check, when needed, lives in the popup which calls
+    // getResolvedTranslator(uuid, manifest) before sending the request and
+    // sets args.inlineTranslator on a cache-wins decision.
+    bundled = await getResolvedTranslator(args.translatorId, null)
+  }
   if (bundled === null) {
     console.log('[milton-sandbox] translator not in bundle; falling back to lazy CDN-fetch via parent')
     bundled = await loadTranslatorFromParent({
@@ -290,6 +308,7 @@ function wirePostMessageListener(): void {
         translatorId: msg.translatorId,
         html: msg.html,
         timeoutMs: msg.timeoutMs,
+        inlineTranslator: msg.inlineTranslator,
       })
       const reply = makeTranslateResponse({ requestId: msg.requestId, items })
       ;(event.source as Window | null)?.postMessage(reply, { targetOrigin: '*' })

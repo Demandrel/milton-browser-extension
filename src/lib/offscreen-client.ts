@@ -29,7 +29,7 @@ import type {
   MiltonTranslateRequestMsg,
   MiltonTranslateResponseMsg,
 } from '../offscreen/offscreen'
-import type { ZoteroItem } from '../translator-runtime/zotero-types'
+import type { BundledTranslator, ZoteroItem } from '../translator-runtime/zotero-types'
 
 const OFFSCREEN_DOC_URL = 'src/offscreen/offscreen.html'
 const DEFAULT_POPUP_TIMEOUT_MS = 15_000
@@ -74,6 +74,15 @@ export interface RequestClientTranslationArgs {
   requestId?: string
   /** AbortSignal lets the popup cancel mid-flight (e.g., user closed popup, state moved on). */
   signal?: AbortSignal
+  /**
+   * BE-8-9: pre-resolved cached-fresher translator body. Popup populates
+   * via getResolvedTranslator(uuid, manifest) when the SW's auto-refresh
+   * has cached a newer version than the build-time pin. Forwarded through
+   * to the sandbox; sandbox uses inline if present, else its own bundled
+   * lookup (which can never see cached entries — opaque origin + no
+   * chrome.storage access).
+   */
+  inlineTranslator?: BundledTranslator
 }
 
 /**
@@ -97,6 +106,7 @@ export async function requestClientTranslation(
     html: args.html,
     translatorId: args.translatorId,
     timeoutMs: args.timeoutMs,
+    inlineTranslator: args.inlineTranslator,
   }
 
   const sendPromise = chrome.runtime.sendMessage(msg) as Promise<MiltonTranslateResponseMsg | undefined>

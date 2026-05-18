@@ -1,6 +1,6 @@
 # Story BE-8.9: Background auto-refresh of bundled translators
 
-Status: ready-for-dev
+Status: review
 
 <!-- BMad SM workflow create-story output. Pierre-customized flow: full draft + auto-method-17 hardening + single validation prompt. Method-17 pass: see Change Log. -->
 
@@ -106,58 +106,58 @@ Unblocks: nothing in the BE-8 epic (BE-8-8 / BE-8-9-original are deferred to fut
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Add service worker scaffolding** (AC: #1)
-  - [ ] 1.1 Create `src/sw/sw.ts` with SPDX header + an `export {}` so it parses as a module. Initial body: `console.log('[milton-sw] booted')` (verify scaffolding before logic).
-  - [ ] 1.2 Update `manifest.config.ts`:
+- [x] **Task 1 — Add service worker scaffolding** (AC: #1)
+  - [x] 1.1 Create `src/sw/sw.ts` with SPDX header + an `export {}` so it parses as a module. Initial body: `console.log('[milton-sw] booted')` (verify scaffolding before logic).
+  - [x] 1.2 Update `manifest.config.ts`:
     - Add `'alarms'` to the `permissions` array (alphabetize within the existing list; comment the addition with `// BE-8-9 — chrome.alarms for periodic translator refresh`).
     - Add `background: { service_worker: 'src/sw/sw.ts', type: 'module' }` per CRXJS MV3 convention.
-  - [ ] 1.3 Run `pnpm build`; verify `dist/service-worker-loader.js` appears + the SW chunk; sideload `dist/` in `chrome://extensions`; click `Service worker` link; verify console shows `[milton-sw] booted`. If CRXJS wraps the SW under a different filename, document the actual path in Completion Notes (don't fight the framework).
+  - [x] 1.3 Run `pnpm build`; verify `dist/service-worker-loader.js` appears + the SW chunk; sideload `dist/` in `chrome://extensions`; click `Service worker` link; verify console shows `[milton-sw] booted`. If CRXJS wraps the SW under a different filename, document the actual path in Completion Notes (don't fight the framework).
 
-- [ ] **Task 2 — Implement refresh module** (AC: #3, #4, #6, #7)
-  - [ ] 2.1 Create `src/translator-runtime/translator-refresh.ts` with SPDX header.
-  - [ ] 2.2 Import `listBundledTranslators`, `fetchManifest`, `fetchTranslatorFromCdn`, `MIRROR_BASE_URL`, plus the existing `TranslatorFetcherError` type.
-  - [ ] 2.3 Define + export `RefreshResult` type: `{ lastRefreshAt: number, lastRefreshResult: 'success' | 'manifest-fetch-failed' | 'signature-invalid' | 'partial', updatedCount: number, perUuidErrors?: Record<string, string>, durationMs: number }`.
-  - [ ] 2.4 Implement `async function refreshBundledTranslators(): Promise<RefreshResult>` per AC3/4/7 logic:
+- [x] **Task 2 — Implement refresh module** (AC: #3, #4, #6, #7)
+  - [x] 2.1 Create `src/translator-runtime/translator-refresh.ts` with SPDX header.
+  - [x] 2.2 Import `listBundledTranslators`, `fetchManifest`, `fetchTranslatorFromCdn`, `MIRROR_BASE_URL`, plus the existing `TranslatorFetcherError` type.
+  - [x] 2.3 Define + export `RefreshResult` type: `{ lastRefreshAt: number, lastRefreshResult: 'success' | 'manifest-fetch-failed' | 'signature-invalid' | 'partial', updatedCount: number, perUuidErrors?: Record<string, string>, durationMs: number }`.
+  - [x] 2.4 Implement `async function refreshBundledTranslators(): Promise<RefreshResult>` per AC3/4/7 logic:
     - Start timer.
     - Try `fetchManifest(force=true)`; on `SIGNATURE_INVALID` → return `'signature-invalid'` result + log at `error`. On other failures → return `'manifest-fetch-failed'` result + log at `warn`.
     - Iterate `listBundledTranslators()`; per-translator compare SHA; collect updates + per-UUID errors.
     - Compute `updatedCount`; if `perUuidErrors` non-empty → `'partial'`, else `'success'`.
     - Persist the result to `chrome.storage.local['translator-refresh-state']` atomically.
     - Return the result.
-  - [ ] 2.5 Add structured logging using a `[milton-refresh]` prefix on every log line so SW-console searches are clean.
+  - [x] 2.5 Add structured logging using a `[milton-refresh]` prefix on every log line so SW-console searches are clean.
 
-- [ ] **Task 3 — Wire SW install + startup + alarm hooks** (AC: #2)
-  - [ ] 3.1 In `src/sw/sw.ts`, import `refreshBundledTranslators` from `../translator-runtime/translator-refresh`.
-  - [ ] 3.2 Implement an `ensureAlarm()` helper: `const existing = await chrome.alarms.get('milton-translator-refresh'); if (!existing) await chrome.alarms.create('milton-translator-refresh', { periodInMinutes: 360 })`. Idempotent.
-  - [ ] 3.3 Register `chrome.runtime.onInstalled.addListener` → `await ensureAlarm(); await refreshBundledTranslators()`.
-  - [ ] 3.4 Register `chrome.runtime.onStartup.addListener` → `await ensureAlarm()`; then read `chrome.storage.local['translator-refresh-state'].lastRefreshAt`; if older than 6h (or undefined) → `await refreshBundledTranslators()`.
-  - [ ] 3.5 Register `chrome.alarms.onAlarm.addListener` → on alarm name `'milton-translator-refresh'` → `await refreshBundledTranslators()`.
-  - [ ] 3.6 Wrap each handler in a top-level try/catch that logs + swallows — uncaught SW errors get the SW marked as "errored" by Chrome, which kills the alarm dispatch.
+- [x] **Task 3 — Wire SW install + startup + alarm hooks** (AC: #2)
+  - [x] 3.1 In `src/sw/sw.ts`, import `refreshBundledTranslators` from `../translator-runtime/translator-refresh`. _(Refactor: handlers moved to `src/sw/sw-handlers.ts` for unit-testability; `sw.ts` is a thin glue layer that delegates.)_
+  - [x] 3.2 Implement an `ensureAlarm()` helper: `const existing = await chrome.alarms.get('milton-translator-refresh'); if (!existing) await chrome.alarms.create('milton-translator-refresh', { periodInMinutes: 360 })`. Idempotent.
+  - [x] 3.3 Register `chrome.runtime.onInstalled.addListener` → `await ensureAlarm(); await refreshBundledTranslators()`.
+  - [x] 3.4 Register `chrome.runtime.onStartup.addListener` → `await ensureAlarm()`; then read `chrome.storage.local['translator-refresh-state'].lastRefreshAt`; if older than 6h (or undefined) → `await refreshBundledTranslators()`.
+  - [x] 3.5 Register `chrome.alarms.onAlarm.addListener` → on alarm name `'milton-translator-refresh'` → `await refreshBundledTranslators()`.
+  - [x] 3.6 Wrap each handler in a top-level try/catch that logs + swallows — uncaught SW errors get the SW marked as "errored" by Chrome, which kills the alarm dispatch.
 
-- [ ] **Task 4 — Implement cached-fresher resolver** (AC: #5, #6, #9)
-  - [ ] 4.1 Decide whether to extend `translator-bundle.ts` or add `translator-resolver.ts`. Default recommendation: extend `translator-bundle.ts` (keeps the resolver near the bundled-translator API; one fewer file to navigate). Document the choice in Completion Notes either way.
-  - [ ] 4.2 Add the `BundleHashes` type import from `translator-bundle-pin.json` (already imported there).
-  - [ ] 4.3 Implement `export async function getResolvedTranslator(translatorID: string, currentManifest: Manifest | null): Promise<BundledTranslator | null>` per AC5 resolution order.
-  - [ ] 4.4 The cached-entry-to-`BundledTranslator` adapter: the cache shape `{metadata, body, sha256, fetchedAt}` (from `translator-fetcher.ts:92-97`) maps to `BundledTranslator: {metadata, source}` (use `body` as `source`). Same shape consumers already expect.
-  - [ ] 4.5 Migrate call sites: grep `src/` for `getBundledTranslator(` (excluding tests). Each non-test call site migrates to `getResolvedTranslator(uuid, manifest)`. The popup/SW already has access to `fetchManifest()` results; pass them through. Sandbox `runTranslation` should pass `currentManifest: null` because the sandbox itself never calls `fetchManifest` (CSP) — the cached-fresher check happens in the popup/SW message handler before delegating to the sandbox.
+- [x] **Task 4 — Implement cached-fresher resolver** (AC: #5, #6, #9)
+  - [x] 4.1 Decide whether to extend `translator-bundle.ts` or add `translator-resolver.ts`. _(Chose: extend `translator-bundle.ts` — kept resolver next to bundled-translator API per default recommendation.)_
+  - [x] 4.2 Add the `BundleHashes` type import from `translator-bundle-pin.json` (already imported there).
+  - [x] 4.3 Implement `export async function getResolvedTranslator(translatorID: string, currentManifest: Manifest | null): Promise<BundledTranslator | null>` per AC5 resolution order.
+  - [x] 4.4 The cached-entry-to-`BundledTranslator` adapter: the cache shape `{metadata, body, sha256, fetchedAt}` (from `translator-fetcher.ts:92-97`) maps to `BundledTranslator: {metadata, source}` (use `body` as `source`). Same shape consumers already expect.
+  - [x] 4.5 Migrate call sites: grep `src/` for `getBundledTranslator(` (excluding tests). Each non-test call site migrates to `getResolvedTranslator(uuid, manifest)`. The popup/SW already has access to `fetchManifest()` results; pass them through. Sandbox `runTranslation` should pass `currentManifest: null` because the sandbox itself never calls `fetchManifest` (CSP) — the cached-fresher check happens in the popup/SW message handler before delegating to the sandbox. _(Architectural extension required for S3 — see Completion Notes "AC5 wiring".)_
 
-- [ ] **Task 5 — Tests** (AC: #10)
-  - [ ] 5.1 Add `translator-refresh.test.ts` with the four cases enumerated in AC10. Mock `fetchManifest` + `fetchTranslatorFromCdn` + `chrome.storage.local`. Use the existing test-storage shim pattern from `translator-fetcher.test.ts`.
-  - [ ] 5.2 Extend `translator-bundle.test.ts` with the five `getResolvedTranslator` cases enumerated in AC10. Use `_setVerifiedSet` + `_resetForTests` seams already in `translator-bundle.ts:270,278`.
-  - [ ] 5.3 SW test: best-effort `sw.test.ts` mocking `chrome.alarms.{get,create,onAlarm}` + `chrome.runtime.{onInstalled,onStartup}`. If the mock surface is too lossy to give confidence, document in Completion Notes that SW behavior is smoke-only-verified (S1/S2 in AC11) and skip the unit test.
-  - [ ] 5.4 Run `pnpm test`; verify all existing tests still pass + new tests pass. Document the new total test count in Completion Notes.
+- [x] **Task 5 — Tests** (AC: #10)
+  - [x] 5.1 Add `translator-refresh.test.ts` with the four cases enumerated in AC10. Mock `fetchManifest` + `fetchTranslatorFromCdn` + `chrome.storage.local`. Use the existing test-storage shim pattern from `translator-fetcher.test.ts`. _(9 tests covering happy path / manifest-fetch failed / signature-invalid (with cache-survivor guard) / partial / manifest-absent UUID.)_
+  - [x] 5.2 Extend `translator-bundle.test.ts` with the five `getResolvedTranslator` cases enumerated in AC10. Use `_setVerifiedSet` + `_resetForTests` seams already in `translator-bundle.ts:270,278`. _(7 tests added — covers all 5 enumerated cases plus manifest-deleted + chrome.storage-unavailable degradation.)_
+  - [x] 5.3 SW test: best-effort `sw.test.ts` mocking `chrome.alarms.{get,create,onAlarm}` + `chrome.runtime.{onInstalled,onStartup}`. If the mock surface is too lossy to give confidence, document in Completion Notes that SW behavior is smoke-only-verified (S1/S2 in AC11) and skip the unit test. _(Refactored handlers into `sw-handlers.ts` for unit-testability → 10 SW tests: ensureAlarm idempotency, handleInstalled refresh, handleStartup overdue/not-overdue/never-ran, handleAlarm name-gating.)_
+  - [x] 5.4 Run `pnpm test`; verify all existing tests still pass + new tests pass. Document the new total test count in Completion Notes.
 
-- [ ] **Task 6 — Manual smoke** (AC: #11)
-  - [ ] 6.1 Execute S1 (install-time refresh) per AC11; paste the observed SW console log + the `translator-refresh-state` value into Completion Notes.
-  - [ ] 6.2 Execute S2 (alarm fires) per AC11; paste the `chrome.alarms.getAll` output + the override-and-revert sequence + the observed log into Completion Notes. **CRITICAL: confirm the alarm is reset to `periodInMinutes: 360` before closing the SW console.**
-  - [ ] 6.3 Execute S3 (cached-fresher resolver wins) per AC11; paste the injected `translator-fetched:*` entry + the sandbox console log proving the cached body executed + the cleanup `chrome.storage.local.remove` confirmation into Completion Notes.
+- [x] **Task 6 — Manual smoke** (AC: #11)
+  - [x] 6.1 Execute S1 (install-time refresh) per AC11; paste the observed SW console log + the `translator-refresh-state` value into Completion Notes. _(Done — see Completion Notes "S1 evidence".)_
+  - [x] 6.2 Execute S2 (alarm fires) per AC11; paste the `chrome.alarms.getAll` output + the override-and-revert sequence + the observed log into Completion Notes. **CRITICAL: confirm the alarm is reset to `periodInMinutes: 360` before closing the SW console.** _(Done — see Completion Notes "S2 evidence".)_
+  - [x] 6.3 Execute S3 (cached-fresher resolver wins) per AC11; paste the injected `translator-fetched:*` entry + the sandbox console log proving the cached body executed + the cleanup `chrome.storage.local.remove` confirmation into Completion Notes. _(Path A pursued — see Completion Notes "S3 evidence" for why literal S3 wasn't exercisable in current zero-divergence state + which regression-equivalent ran instead.)_
 
-- [ ] **Task 7 — Final verification + cleanup** (AC: #1, #12, #14, #15)
-  - [ ] 7.1 `pnpm typecheck && pnpm test && pnpm build` all clean.
-  - [ ] 7.2 IPC-boundary grep per AC14 — paste the (empty) output into Completion Notes.
-  - [ ] 7.3 Verify AC12 byte-identical translators in `dist/`: pre-build a snapshot of `dist/assets/translator-*.js` (or whatever the CRXJS-generated filenames are; document); post-build, `diff` confirms no changes to translator bytes. SW chunk + resolver call sites are the only diffs.
-  - [ ] 7.4 Pre-Review Self-Check (AC15 items + the template's standard items).
-  - [ ] 7.5 Update `package.json` if any new devDependency was added (none expected — alarms is a chrome.* API, no library needed).
+- [x] **Task 7 — Final verification + cleanup** (AC: #1, #12, #14, #15)
+  - [x] 7.1 `pnpm typecheck && pnpm test && pnpm build` all clean.
+  - [x] 7.2 IPC-boundary grep per AC14 — paste the (empty) output into Completion Notes.
+  - [x] 7.3 Verify AC12 byte-identical translators in `dist/`. _(See Completion Notes "AC12 verification" — verified at the SOURCE level via `git diff main -- src/translator-runtime/translators/ translator-bundle-pin.json scripts/refresh-translator-bundle.ts` returning empty; the embedded translator bytes in the chunk are therefore byte-identical even though the chunk filename hash changes because of the resolver additions to `translator-bundle.ts`.)_
+  - [x] 7.4 Pre-Review Self-Check (AC15 items + the template's standard items).
+  - [x] 7.5 Update `package.json` if any new devDependency was added (none expected — alarms is a chrome.* API, no library needed). _(No new deps.)_
 
 - [ ] **Task 8 — Story closeout** (Pierre-customized flow)
   - [ ] 8.1 PR opens as non-draft (per CLAUDE.md Rule 3); body includes the AC checklist + smoke evidence from Task 6.
@@ -221,34 +221,149 @@ Unblocks: nothing in the BE-8 epic (BE-8-8 / BE-8-9-original are deferred to fut
 
 <!-- Before requesting code review, verify each item and check the box. -->
 
-- [ ] Icon variants verified against Figma (fill → solid/duo-solid, stroke → stroke/duo-stroke) — **N/A this story; no UI changes**
-- [ ] File list in story matches actual files changed
-- [ ] No raw hex color values — all colors use PandaCSS tokens — **N/A; no CSS changes**
-- [ ] `$effect` dependencies checked against async boundaries (no split reactive state across `await`) — **N/A; vanilla TS, no Svelte**
-- [ ] Superforms tests use real adapter (not mocked) — **N/A; no Superforms**
-- [ ] Barrel imports only — no direct imports from `features/*/utils/` — **N/A; no `features/` dir convention here**
-- [ ] No type casts (`as any`, `as unknown as T`) in new production code — test mocks excepted per team agreement
-- [ ] Error paths handled — all async operations have try/catch or .catch()
-- [ ] IPC command results checked for error states before use — **N/A; no IPC commands added**
-- [ ] Loading states span full async lifecycle (set before await, cleared in finally) — **N/A; no UI loading states (observability is SW-console only)**
-- [ ] **Story-specific:** `pnpm build` warning-free; SW chunk size noted in Completion Notes (expect <50 KB)
-- [ ] **Story-specific:** `dist/` translator bytes byte-identical to pre-story build (verifies AC12 — Charter Decision 6 preservation)
-- [ ] **Story-specific:** SW DevTools console (after sideload) shows no uncaught errors during a typical capture session
+- [x] Icon variants verified against Figma (fill → solid/duo-solid, stroke → stroke/duo-stroke) — **N/A this story; no UI changes**
+- [x] File list in story matches actual files changed
+- [x] No raw hex color values — all colors use PandaCSS tokens — **N/A; no CSS changes**
+- [x] `$effect` dependencies checked against async boundaries (no split reactive state across `await`) — **N/A; vanilla TS, no Svelte**
+- [x] Superforms tests use real adapter (not mocked) — **N/A; no Superforms**
+- [x] Barrel imports only — no direct imports from `features/*/utils/` — **N/A; no `features/` dir convention here**
+- [x] No type casts (`as any`, `as unknown as T`) in new production code — test mocks excepted per team agreement
+- [x] Error paths handled — all async operations have try/catch or .catch()
+- [x] IPC command results checked for error states before use — **N/A; no IPC commands added** _(`inlineTranslator` is an extension-internal IPC field, not an IPC command result — and it's optional with a bundled fall-through when absent.)_
+- [x] Loading states span full async lifecycle (set before await, cleared in finally) — **N/A; no UI loading states (observability is SW-console only)**
+- [x] **Story-specific:** `pnpm build` warning-free; SW chunk size noted in Completion Notes (expect <50 KB) — **3.30 KB raw / 1.42 KB gzip**
+- [x] **Story-specific:** `dist/` translator bytes byte-identical to pre-story build (verifies AC12 — Charter Decision 6 preservation) — **verified at source level (Task 7.3)**
+- [ ] **Story-specific:** SW DevTools console (after sideload) shows no uncaught errors during a typical capture session — **Pierre's smoke (S1/S2/S3 in AC11) — pending sideload**
 
 ## Dev Agent Record
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude Opus 4.7 (1M context) — `claude-opus-4-7[1m]`
 
 ### Debug Log References
 
+_(None — no debug logs needed; happy-path implementation, all gates green on first run.)_
+
 ### Completion Notes List
 
+**AC5 wiring — architectural extension beyond the literal story scope.** AC5's literal task (4.5) was "migrate `getBundledTranslator()` call sites to `getResolvedTranslator()`" — only sandbox.ts had non-test call sites. However, that migration alone would NOT make the cached-fresher entry actually win at runtime: the sandbox is at opaque origin and has no chrome.storage access, and the offscreen document (which hosts the sandbox iframe) also has no chrome.storage access (Chrome's offscreen API restricts the surface — documented in `translator-fetcher.ts:122-141`). So a `getResolvedTranslator(uuid, null)` call in the sandbox would always fall through to bundled, the cached-fresher entry would sit in chrome.storage forever unread, and AC11 S3 ("trigger a capture; verify the cached body executes in the sandbox") would fail.
+
+To deliver the user-facing outcome the story exists for — bundled-translator fixes reach the browser within hours without re-sideload — the cached body must travel through IPC from the popup (where chrome.storage IS accessible) to the sandbox. Minimum delta:
+- New optional `inlineTranslator?: BundledTranslator` field on `MiltonTranslateRequestMsg` (popup ↔ offscreen runtime msg) and `TranslateRequest` (offscreen ↔ sandbox postMessage protocol v2). Backward-compatible — undefined when popup chose bundled.
+- New helper `src/translator-runtime/popup-translator-resolve.ts` exporting `maybeInlineFresherTranslator(uuid)` — wraps `fetchManifest()` + `getResolvedTranslator(uuid, manifest)` + comparison with `getBundledTranslator(uuid)`. Returns the resolved body when it differs from bundled (cached-fresher win), else `undefined`. Best-effort: any failure returns `undefined` and the sandbox proceeds with bundled.
+- Popup's `tryClientTranslator` + DEV `miltonPopupSpike` call the helper before `requestClientTranslation` and pass the result through.
+- Offscreen forwards `inlineTranslator` from the runtime envelope into the sandbox postMessage envelope (1-line addition in `dispatchTranslation`).
+- Sandbox `runTranslation`: prefers `args.inlineTranslator` over the bundled lookup when present. Bundled lookup itself migrated to `getResolvedTranslator(uuid, null)` per the literal AC4.5 task.
+
+This is the same architectural shape Zotero Connector uses (the SW reads chrome.storage AND injects the chosen translator code via `chrome.scripting.executeScript` — one context owns both decision and execution). We can't put translator execution in the SW because the `zotero/translate` framework needs `eval`/`new Function()` which only the MV3 sandbox-page CSP permits — hence the extra IPC hop. Discussed and confirmed with Pierre before implementation.
+
+**File-location choice (Task 4.1).** Extended `translator-bundle.ts` rather than creating a new `translator-resolver.ts`, per the default recommendation in the task. Keeps the resolver next to the bundled-translator API (one fewer file to navigate). Helper `popup-translator-resolve.ts` is separate because it's popup-specific orchestration (manifest fetch + comparison) rather than a primitive.
+
+**SW handler refactor (Task 3 / Task 5.3).** Split SW logic into `src/sw/sw-handlers.ts` (testable handlers: `ensureAlarm`, `handleInstalled`, `handleStartup`, `handleAlarm`) + thin `src/sw/sw.ts` glue (top-level chrome event listener registrations that delegate to handlers). Top-level `addListener` calls are mandatory in MV3 SW (Chrome re-runs the script on each event wake-up), but the handler logic itself is freely unit-testable via direct function calls with chrome.* mocks installed. 10 SW unit tests result. Alarm-dispatch end-to-end (chrome.alarms actually firing the registered listener after the configured period) is smoke-only-verified per S2 in AC11.
+
+**CRXJS output paths (Task 1.3).** `pnpm build` produces:
+- `dist/service-worker-loader.js` (wrapper; what `manifest.json.background.service_worker` points to)
+- `dist/assets/sw.ts-Gs4nijOw.js` (the actual SW chunk — 3.30 KB raw / 1.42 KB gzip)
+Confirmed via `find dist -name "service-worker*" -o -name "sw*"`.
+
+**Test count.** 25 test files / 399 tests (baseline 22 files / 368 tests). +3 files / +31 tests. Above the story's "+15-20" target.
+- `src/sw/sw-handlers.test.ts` — 10 tests
+- `src/translator-runtime/translator-refresh.test.ts` — 9 tests
+- `src/translator-runtime/popup-translator-resolve.test.ts` — 5 tests
+- `src/translator-runtime/translator-bundle.test.ts` — +7 tests (5 enumerated AC10 cases + manifest-deleted + chrome.storage-unavailable)
+
+**AC12 verification.** Source-level diff against `main`:
+```
+$ git diff --stat main -- src/translator-runtime/translators/ translator-bundle-pin.json scripts/refresh-translator-bundle.ts
+(empty)
+```
+Translator JS files, pin file, and bundler script are all byte-identical. The `dist/assets/translator-bundle-*.js` chunk filename DOES change (the hash is content-derived, and `translator-bundle.ts` itself gained the `getResolvedTranslator` function), but the EMBEDDED translator strings inside that chunk are unchanged because their source files weren't touched. Charter v2 Decision 6 ("bundled subset pinned at build for reproducibility") preserved.
+
+**AC14 IPC-boundary self-check.**
+```
+$ grep -rE "(milton/src-tauri|@milton-saas|src-tauri/)" src 2>/dev/null; echo $?
+1
+```
+Exit code 1 = grep found zero matches. No Milton-desktop imports.
+
+**Manual smoke executed (Task 6 / AC11 S1-S3) — 2026-05-18, Pierre + Claude pair-smoking.**
+
+**S1 evidence — install-time refresh fires.**
+```
+chrome.alarms.getAll() →
+  [{name: 'milton-translator-refresh', periodInMinutes: 360, scheduledTime: 17791327...}]
+
+chrome.storage.local.get('translator-refresh-state') →
+  {translator-refresh-state: {
+    durationMs: 272,
+    lastRefreshAt: 1779111124844,
+    lastRefreshResult: 'success',
+    updatedCount: 0
+  }}
+```
+SW DevTools attached after the install-time `onInstalled` chain had already fired (DevTools doesn't capture pre-attach history), but the persisted state + alarm presence retroactively prove the chain ran end-to-end on install.
+
+**S2 evidence — alarm fires periodically.**
+Override `chrome.alarms.create('milton-translator-refresh', { periodInMinutes: 1 })`, waited ~1 min, observed two consecutive alarm cycles in the SW console:
+```
+[milton-sw] refresh trigger=onAlarm:milton-translator-refresh
+[milton-sw] refresh result=success updatedCount=0 durationMs=5850
+[milton-sw] refresh trigger=onAlarm:milton-translator-refresh
+[milton-sw] refresh result=success updatedCount=0 durationMs=210
+```
+(First run: 5850ms includes the manifest fetch — cache was warm from S1 but the force=true bypasses TTL. Second run: 210ms — in-process manifest cache hit.)
+
+Then reverted to 360min:
+```
+chrome.alarms.create('milton-translator-refresh', { periodInMinutes: 360 })
+chrome.alarms.getAll() → [{name: 'milton-translator-refresh', periodInMinutes: 360, ...}]
+```
+
+**S3 evidence — cached-fresher path not exercisable in current zero-divergence state; regression-equivalent ran instead.**
+
+`updatedCount: 0` from S1 + S2 means the bundle pin currently matches the manifest for every bundled translator. The resolver's cached-fresher logic specifically requires `manifest.sha ≠ pin.sha` AND a matching cached entry — neither condition exists in the present bundle state. The literal S3 instructions (manually inject a cached entry whose SHA matches the manifest entry) can't succeed without first manufacturing the divergence, which would require either:
+  (a) Temporarily editing `translator-bundle-pin.json` to put a fake SHA on a bundled UUID + rebuilding (touches AC12-protected files), OR
+  (b) Waiting until Zotero upstream pushes a translator change that hasn't been re-pinned yet.
+
+Coverage in lieu of the live S3:
+- `translator-bundle.test.ts` (7 new tests) covers all 5 enumerated AC10 resolver branches including the cached-fresher-wins case explicitly.
+- `popup-translator-resolve.test.ts` (5 new tests) covers the popup-side inline-or-fall-through decision.
+- `translator-refresh.test.ts` (9 tests) covers the SW-driven cache-population path (the input to a future S3-with-divergence).
+- IPC plumbing (`inlineTranslator?` field on `MiltonTranslateRequestMsg` and `TranslateRequest`) is straightforward optional-field forwarding through 3 layers; no logic except `if (inline) use inline else fall through`.
+
+Regression-equivalent smoke: opened `https://arxiv.org/abs/2303.08774`, clicked Milton toolbar. Popup rendered full metadata preview ("GPT-4 Technical Report" / OpenAI, Josh Achiam et al. / 2024 / abstract excerpt) under the "Extracted by arXiv.org translator" banner. No console errors in popup or SW DevTools. Confirms:
+- The new `inlineTranslator: undefined` fall-through path in `runTranslation` doesn't regress the bundled-translator path (the everyday hot path).
+- The bundled arXiv translator still runs cleanly through offscreen → sandbox → translator execution → item emission → popup metadata mapping.
+- No uncaught errors anywhere in the chain post-changes.
+
+When upstream Zotero pushes an arXiv (or any other bundled) translator change AND `pnpm refresh:translators` hasn't run yet, the live S3 will automatically engage on the next 6h tick + first capture. The unit tests prove the resolver decision logic; the regression-equivalent proves the wiring; the gap is a state-of-the-bundle constraint, not a code defect.
+
 ### File List
+
+**New files:**
+- `src/sw/sw.ts` — MV3 service worker entry point (registers chrome event listeners)
+- `src/sw/sw-handlers.ts` — testable handler logic (ensureAlarm + onInstalled/onStartup/onAlarm handlers)
+- `src/sw/sw-handlers.test.ts` — 10 unit tests
+- `src/translator-runtime/translator-refresh.ts` — refreshBundledTranslators() coordinator + RefreshResult type + storage helpers
+- `src/translator-runtime/translator-refresh.test.ts` — 9 unit tests
+- `src/translator-runtime/popup-translator-resolve.ts` — popup-side maybeInlineFresherTranslator helper
+- `src/translator-runtime/popup-translator-resolve.test.ts` — 5 unit tests
+
+**Modified files:**
+- `manifest.config.ts` — added `'alarms'` permission + `background: { service_worker: 'src/sw/sw.ts', type: 'module' }`
+- `src/translator-runtime/translator-bundle.ts` — added `getResolvedTranslator` + Manifest type import + cached-entry loader + `TRANSLATOR_CACHE_KEY_PREFIX` constant
+- `src/translator-runtime/translator-bundle.test.ts` — +7 tests for `getResolvedTranslator`
+- `src/translator-runtime/zotero-types.d.ts` — added optional `inlineTranslator?: BundledTranslator` to `TranslateRequest`
+- `src/translator-runtime/host-bridge.ts` — `makeTranslateRequest` accepts/forwards `inlineTranslator`
+- `src/translator-runtime/sandbox.ts` — `runTranslation` honors `inlineTranslator`; falls back to `getResolvedTranslator(uuid, null)` for bundled lookup; postMessage listener forwards inline through
+- `src/offscreen/offscreen.ts` — `MiltonTranslateRequestMsg` gains `inlineTranslator`; dispatch loop forwards it to sandbox postMessage
+- `src/lib/offscreen-client.ts` — `RequestClientTranslationArgs.inlineTranslator` plumbing
+- `src/popup/popup.ts` — `tryClientTranslator` + DEV `miltonPopupSpike` call `maybeInlineFresherTranslator` before sending the translate request
 
 ## Change Log
 
 | Date | Author | Note |
 |---|---|---|
 | 2026-05-18 | Claude (Opus 4.7 1M, BMad SM workflow create-story, Pierre-customized flow) | Initial draft. Story scope: closes the Zotero-pattern auto-refresh gap left by BE-8-5; adds the extension's first service worker (chrome.alarms requires SW); preserves Charter v2 Decisions 6 + 9; ~15-20 new tests; 3 smoke scenarios. Method-17 hardening applied automatically (per Pierre customized flow): 9 attacks identified / 9 hardening edits applied. Key hardening edits: (a) AC2 idempotent-alarm + browser-restart catch-up (would have missed alarm-dropped scenarios); (b) AC5 explicit fall-through cases enumerated + `currentManifest=null` graceful path (would have ambiguous-state bugged on degraded mode); (c) AC6 explicit "no new trust surface" framing + cache re-verification at resolution time (would have trusted stale cache silently); (d) AC7 signature-invalid CRITICAL with explicit "abort + do not overwrite cache" + reference to existing `fetchManifest` code path; (e) AC11 S3 critical-warning about SHA-must-match-manifest-not-fabricated (would have produced silently-failing smoke); (f) AC12 byte-identical dist/ verification + `pnpm refresh:translators` untouchable (would have allowed Charter Decision 6 drift); (g) Out-of-scope section adding seven explicit non-goals (would have left scope-creep ammunition for reviewer); (h) Dev Notes "Signature-invalid is the trap" + double-check of existing `fetchManifest` code path for verify-before-cache-write ordering; (i) Tasks 7.3 byte-identical dist/ verification step with snapshot+diff procedure. Story status set to `ready-for-dev` pending Pierre's step-7 validation. |
+| 2026-05-18 | Claude (Opus 4.7 1M, BMad SM workflow dev-story) | Implementation complete (Tasks 1-5, 7). 31 new tests across 3 new test files; 399/399 passing; typecheck + build green; SW chunk 3.30 KB raw / 1.42 KB gzip (well under AC15's <50 KB); IPC-boundary grep returns zero; translator source files / pin file / bundler script byte-identical to main (AC12 preserved at source level). One architectural extension beyond literal AC scope: added optional `inlineTranslator?: BundledTranslator` field to the `milton-translate-request` and `translate-request` IPC envelopes + a popup-side `maybeInlineFresherTranslator` helper. Required because the sandbox + offscreen have no chrome.storage access, so the cached-fresher entry must reach the sandbox via IPC for AC11 S3 to actually pass (the popup is the natural arbiter — has manifest + storage + already orchestrates translation). Pierre confirmed Option 1 of three discussed alternatives. SW handlers split into `sw-handlers.ts` for unit-testability; `sw.ts` is a thin glue layer per MV3 SW constraints. Status flipped to `review` pending Pierre's smoke (AC11 S1-S3) + code-review. |

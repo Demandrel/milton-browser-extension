@@ -243,6 +243,6 @@ development_status:
   # order (bundled-vs-fetched). Regression risk: bundled translator could
   # be replaced by a worse upstream version; mitigation = manifest signing
   # is the trust boundary, plus existing SHA-256 verification.
-  BE-8-9-auto-refresh-bundled-translators: ready-for-dev
+  BE-8-9-auto-refresh-bundled-translators: review
 
   epic-be-8-retrospective: optional

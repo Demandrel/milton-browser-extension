@@ -26,6 +26,9 @@ export default defineManifest({
   },
   permissions: [
     'activeTab',
+    // BE-8-9 — chrome.alarms for the periodic 6h translator refresh tick.
+    // Requires the service worker declared in `background` below.
+    'alarms',
     // BE-8-5 — translator-fetcher.ts caches the manifest + lazy-fetched
     // translators in chrome.storage.local (translator-mirror-metadata +
     // translator-fetched:* keys; LRU-capped at 50 entries; well under the
@@ -43,6 +46,12 @@ export default defineManifest({
     // via offscreen-client.ts:ensureOffscreenDocument.
     'offscreen',
   ],
+  // BE-8-9 — service worker hosts the periodic translator-refresh alarm.
+  // CRXJS rewrites the path + emits service-worker-loader.js at build time.
+  background: {
+    service_worker: 'src/sw/sw.ts',
+    type: 'module',
+  },
   host_permissions: [
     'https://translate.milton.so/*',
     // BE-8-5 — extension fetches the manifest + per-translator code from the

@@ -134,6 +134,13 @@ export type TranslateRequest = {
   translatorId: string
   html?: string
   timeoutMs?: number
+  // BE-8-9: optional inline translator body. Set by the popup when the
+  // cached-fresher resolver decides a `translator-fetched:{uuid}` entry
+  // beats the build-time bundled bytes. Sandbox uses it directly instead
+  // of `getBundledTranslator(translatorId)`. The sandbox + offscreen have
+  // no chrome.storage access, so the inline path is the only way for the
+  // cached body to reach the sandbox without a wider IPC reshape.
+  inlineTranslator?: BundledTranslator
 }
 
 export type TranslateResponse = {

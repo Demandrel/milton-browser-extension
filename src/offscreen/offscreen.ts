@@ -47,7 +47,7 @@ import {
   PROTOCOL_VERSION,
 } from '../translator-runtime/host-bridge'
 import { fetchTranslatorFromCdn, TranslatorFetcherError } from '../translator-runtime/translator-fetcher'
-import type { FetchProxyResponse, ZoteroItem } from '../translator-runtime/zotero-types'
+import type { BundledTranslator, FetchProxyResponse, ZoteroItem } from '../translator-runtime/zotero-types'
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -58,6 +58,14 @@ export interface MiltonTranslateRequestMsg {
   html: string
   translatorId: string
   timeoutMs?: number
+  // BE-8-9: optional pre-resolved translator body. Popup pre-resolves via
+  // getResolvedTranslator(uuid, manifest); when the cached-fresher entry
+  // beats the build-time bundled pin, the resolved body is inlined here
+  // and forwarded to the sandbox through the translate-request envelope.
+  // Sandbox uses inline if present; else falls back to its own bundled
+  // lookup (which has no chrome.storage access, so it can only see the
+  // bundled version anyway).
+  inlineTranslator?: BundledTranslator
 }
 
 export interface MiltonTranslateResponseMsg {
@@ -152,6 +160,7 @@ async function dispatchTranslation(entry: QueueEntry): Promise<void> {
     translatorId: entry.msg.translatorId,
     html: entry.msg.html,
     timeoutMs: sandboxTimeoutMs,
+    inlineTranslator: entry.msg.inlineTranslator,
   })
   sandboxWindow.postMessage(translateRequest, '*')
   const reply = await waitForTranslateResponse(entry.msg.requestId, sandboxWindow, offscreenWaitMs)
