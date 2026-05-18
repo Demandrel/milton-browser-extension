@@ -4,8 +4,10 @@
 // This file is part of milton-browser-extension.
 // See COPYING for license terms.
 
+// @vitest-environment jsdom
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createReference, listSelectors } from './connector-client'
+import { attachPdfBytes, createReference, listSelectors, MAX_PDF_BYTES } from './connector-client'
 import type { ConnectorReferencePayload } from './types'
 
 // ── fetch mock helpers ─────────────────────────────────────────────────────
@@ -324,5 +326,212 @@ describe('listSelectors — preserves server-side ordering', () => {
     expect(r.ok).toBe(true)
     if (!r.ok) throw new Error('expected ok')
     expect(r.projects.map((p) => p.id)).toEqual(['p-recent', 'p-mid', 'p-old'])
+  })
+})
+
+// ── BE-8-7: attachPdfBytes ─────────────────────────────────────────────────
+//
+// Single fetch-based implementation. (The original spec included an XHR
+// branch for upload progress, but Pierre's Task 6 scope cut dropped the
+// progress UI; H3 from BE-8-7 code-review removed the dead XHR branch.)
+
+function pdfBuffer(byteCount: number): ArrayBuffer {
+  const u8 = new Uint8Array(byteCount)
+  u8[0] = 0x25
+  u8[1] = 0x50
+  u8[2] = 0x44
+  u8[3] = 0x46
+  u8[4] = 0x2d
+  return u8.buffer
+}
+
+function attachRoute(status: number, body?: unknown): Route {
+  return { status, body: body ?? {} }
+}
+
+describe('attachPdfBytes', () => {
+  it('returns ok+attached on 200 {status:"attached"}', async () => {
+    installFetchMock({
+      '/references/abc-123/pdf-bytes': attachRoute(200, { status: 'attached', referenceId: 'abc-123' }),
+    })
+    const r = await attachPdfBytes('abc-123', pdfBuffer(2048))
+    expect(r).toEqual({ ok: true, status: 'attached', referenceId: 'abc-123' })
+  })
+
+  it('returns ok+already_attached on 200 {status:"already_attached"}', async () => {
+    installFetchMock({
+      '/references/abc-123/pdf-bytes': attachRoute(200, {
+        status: 'already_attached',
+        referenceId: 'abc-123',
+      }),
+    })
+    const r = await attachPdfBytes('abc-123', pdfBuffer(2048))
+    expect(r).toEqual({ ok: true, status: 'already_attached', referenceId: 'abc-123' })
+  })
+
+  it('returns 400 with message on bad request', async () => {
+    installFetchMock({
+      '/references/abc-123/pdf-bytes': attachRoute(400, {
+        message: 'body is not a PDF (missing %PDF- magic)',
+      }),
+    })
+    const r = await attachPdfBytes('abc-123', pdfBuffer(2048))
+    expect(r).toMatchObject({ ok: false, status: 400 })
+    if (r.ok || typeof r.status !== 'number') throw new Error('expected typed error')
+    expect(r.message).toMatch(/PDF/)
+  })
+
+  it('returns 403 on reference-not-owned', async () => {
+    installFetchMock({
+      '/references/abc-123/pdf-bytes': attachRoute(403, { message: 'reference not owned by active user' }),
+    })
+    const r = await attachPdfBytes('abc-123', pdfBuffer(2048))
+    expect(r).toMatchObject({ ok: false, status: 403 })
+  })
+
+  it('returns 404 on reference-not-found', async () => {
+    installFetchMock({
+      '/references/abc-123/pdf-bytes': attachRoute(404, { message: 'reference not found' }),
+    })
+    const r = await attachPdfBytes('abc-123', pdfBuffer(2048))
+    expect(r).toMatchObject({ ok: false, status: 404 })
+  })
+
+  it('returns 408 on server-side timeout (distinct from local timeout)', async () => {
+    installFetchMock({
+      '/references/abc-123/pdf-bytes': attachRoute(408, { message: 'request timeout' }),
+    })
+    const r = await attachPdfBytes('abc-123', pdfBuffer(2048))
+    expect(r).toMatchObject({ ok: false, status: 408 })
+  })
+
+  it('returns 413 on server-side oversize', async () => {
+    installFetchMock({
+      '/references/abc-123/pdf-bytes': attachRoute(413, { message: 'payload too large' }),
+    })
+    const r = await attachPdfBytes('abc-123', pdfBuffer(2048))
+    expect(r).toMatchObject({ ok: false, status: 413 })
+  })
+
+  it('returns 503 on signed-out', async () => {
+    installFetchMock({
+      '/references/abc-123/pdf-bytes': attachRoute(503, { message: 'Milton is not signed in' }),
+    })
+    const r = await attachPdfBytes('abc-123', pdfBuffer(2048))
+    expect(r).toMatchObject({ ok: false, status: 503 })
+  })
+
+  it('returns network-error when fetch rejects', async () => {
+    installFetchMock({
+      '/references/abc-123/pdf-bytes': { throwError: true },
+    })
+    const r = await attachPdfBytes('abc-123', pdfBuffer(2048))
+    expect(r).toMatchObject({ ok: false, status: 'network-error' })
+  })
+
+  it('returns 413 client-side WITHOUT issuing POST when bytes exceed cap', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response())
+    const oversize = MAX_PDF_BYTES + 1
+    const r = await attachPdfBytes('abc-123', pdfBuffer(oversize))
+    expect(r).toMatchObject({ ok: false, status: 413 })
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('returns 400 client-side WITHOUT issuing POST when bytes is empty', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response())
+    const r = await attachPdfBytes('abc-123', new ArrayBuffer(0))
+    expect(r).toMatchObject({ ok: false, status: 400 })
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('Content-Type is application/pdf (verifies AC2)', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ status: 'attached', referenceId: 'abc-123' }), { status: 200 }),
+    )
+    await attachPdfBytes('abc-123', pdfBuffer(2048))
+    expect(fetchSpy).toHaveBeenCalledOnce()
+    const init = fetchSpy.mock.calls[0][1] as RequestInit
+    expect((init.headers as Record<string, string>)['Content-Type']).toBe('application/pdf')
+    expect(init.method).toBe('POST')
+  })
+
+  it('returns timeout when internal AbortController fires', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      (_input, init) =>
+        new Promise((_, reject) => {
+          ;(init?.signal as AbortSignal).addEventListener('abort', () => {
+            const err = new Error('aborted')
+            err.name = 'AbortError'
+            reject(err)
+          })
+        }),
+    )
+    const r = await attachPdfBytes('abc-123', pdfBuffer(2048), { timeoutMs: 5 })
+    expect(r).toMatchObject({ ok: false, status: 'timeout' })
+  })
+
+  it('encodeURIComponent is applied to the reference id (single-encoded)', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ status: 'attached', referenceId: 'a/b' }), { status: 200 }),
+    )
+    await attachPdfBytes('a/b', pdfBuffer(1024))
+    const url = String(fetchSpy.mock.calls[0][0])
+    expect(url).toContain('/references/a%2Fb/pdf-bytes')
+    // NOT double-encoded:
+    expect(url).not.toContain('%252F')
+  })
+
+  it('returns network-error (not timeout) when external signal aborts mid-flight', async () => {
+    // M6 from BE-8-7 code-review: caller-cancel and local-timeout must surface
+    // with different `status` values — 'network-error' for cancel, 'timeout'
+    // for the internal setTimeout trip. Same Promise reject path, two
+    // statuses, so the popup can render the right copy.
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      (_input, init) =>
+        new Promise((_, reject) => {
+          ;(init?.signal as AbortSignal).addEventListener('abort', () => {
+            const err = new Error('aborted')
+            err.name = 'AbortError'
+            reject(err)
+          })
+        }),
+    )
+    const externalCtrl = new AbortController()
+    const promise = attachPdfBytes('abc-123', pdfBuffer(2048), {
+      timeoutMs: 60_000, // long enough to NOT fire — we want the external abort to win
+      signal: externalCtrl.signal,
+    })
+    // Wait a microtask so the fetch is in-flight + listening on the signal.
+    await Promise.resolve()
+    externalCtrl.abort()
+    const r = await promise
+    expect(r).toMatchObject({ ok: false, status: 'network-error', message: 'aborted' })
+  })
+
+  it('returns network-error when external signal was already aborted on entry', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(
+      (_input, init) =>
+        new Promise((_, reject) => {
+          ;(init?.signal as AbortSignal).addEventListener('abort', () => {
+            const err = new Error('aborted')
+            err.name = 'AbortError'
+            reject(err)
+          })
+          // If the signal is already aborted, the listener fires synchronously
+          // on add, but to be safe also check here:
+          if ((init?.signal as AbortSignal).aborted) {
+            const err = new Error('aborted')
+            err.name = 'AbortError'
+            reject(err)
+          }
+        }),
+    )
+    const externalCtrl = new AbortController()
+    externalCtrl.abort()
+    const r = await attachPdfBytes('abc-123', pdfBuffer(2048), {
+      signal: externalCtrl.signal,
+    })
+    expect(r).toMatchObject({ ok: false, status: 'network-error', message: 'aborted' })
+    expect(fetchSpy).toHaveBeenCalledOnce()
   })
 })

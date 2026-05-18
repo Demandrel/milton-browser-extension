@@ -178,3 +178,51 @@ export function mapZoteroItemToPayload(
   }
   return payload
 }
+
+// ── BE-8-7: PDF attachment URL extraction ──────────────────────────────────
+//
+// Zotero translators emit `attachments[]` on items for files they've
+// discovered alongside the main metadata — typically a `{url, mimeType,
+// title}` shape. For Class 2 capture (Flow B), the popup needs the FIRST
+// PDF attachment URL so it can client-fetch the bytes (in the active tab's
+// session) and upload them to Milton via BE-8-2's endpoint.
+//
+// Defensive against malformed translator output (BT10): translators
+// sometimes emit `{url, title}` without `mimeType`. Calling `.match()` on
+// `undefined` would throw — silently break Flow B for those publishers.
+// Skip entries where either `mimeType` or `url` is missing/non-string.
+
+/** Minimal attachment shape — only fields BE-8-7 reads. */
+export interface ZoteroAttachmentLike {
+  url?: unknown
+  mimeType?: unknown
+  // translators may emit title, snapshot, document, ...; we don't read them
+}
+
+/**
+ * Return the URL of the first PDF attachment on a ZoteroItem-shaped value,
+ * or null if there are none / `attachments` is missing / `attachments` is
+ * not an array.
+ *
+ * Case-insensitive MIME match (`/^application\/pdf$/i`) — some translators
+ * emit `APPLICATION/PDF`. First-match wins; if real-world dogfood shows
+ * the supplementary PDF appearing before the main paper PDF for some
+ * publisher, file a follow-up to add priority logic. v1 is first-match.
+ */
+export function extractPdfAttachmentUrl(
+  item: { attachments?: unknown } | undefined | null,
+): string | null {
+  if (item === undefined || item === null) return null
+  const atts = item.attachments
+  if (!Array.isArray(atts)) return null
+  for (const raw of atts) {
+    if (raw === null || typeof raw !== 'object') continue
+    const a = raw as ZoteroAttachmentLike
+    if (typeof a.mimeType !== 'string') continue
+    if (typeof a.url !== 'string') continue
+    if (a.url.length === 0) continue
+    if (!/^application\/pdf$/i.test(a.mimeType)) continue
+    return a.url
+  }
+  return null
+}

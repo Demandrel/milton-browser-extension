@@ -176,7 +176,7 @@ development_status:
   # returns a "site requires browser context" failure.
   # High risk. Depends on BE-8-2, BE-8-6.
   # Theme: Capture parity.
-  BE-8-7-class-2-capture-and-paste-failure-ux: backlog
+  BE-8-7-class-2-capture-and-paste-failure-ux: review
 
   # BE-8-8: LLM-fallback in Milton-desktop. Rust calls Anthropic via
   # Milton-server key broker (/api/llm/extract relay — desktop never sees

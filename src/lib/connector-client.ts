@@ -24,6 +24,21 @@ const SELECTOR_TIMEOUT_MS = 2000
 const MAX_BODY_BYTES = 64 * 1024 // matches connector/server.rs MAX_BODY_BYTES
 
 /**
+ * BE-8-7 — Maximum PDF body size for `POST /references/{id}/pdf-bytes`.
+ *
+ * MUST match `connector::server::MAX_PDF_BYTES` in Milton-saas (BE-8-2 AC1).
+ * Bumping this without bumping the server-side cap will cause uploads to fail
+ * with 413 at the connector instead of being caught client-side. Both ends
+ * sized to cover typical academic PDFs (MIT thesis ~10-30 MiB, Nature paper
+ * ~1-5 MiB) while rejecting attacker-supplied 1 GiB textbooks before they
+ * exhaust memory.
+ *
+ * Re-exported so `src/lib/pdf-fetch-in-tab.ts` and any future caller share a
+ * single source of truth.
+ */
+export const MAX_PDF_BYTES = 50 * 1024 * 1024 // 50 MiB
+
+/**
  * Probe Milton's local connector for liveness.
  * 200 OK + valid JSON shape → ok; refusal / timeout / shape mismatch → !ok with reason.
  *
@@ -267,4 +282,206 @@ function parseCollectionSummary(raw: unknown): CollectionSummary | null {
   const r = raw as Record<string, unknown>
   if (typeof r.id !== 'string' || typeof r.name !== 'string') return null
   return { id: r.id, name: r.name }
+}
+
+// --- Story BE-8-7: PDF bytes upload (Class 2 capture two-step IPC) ---------
+//
+// Second leg of the BE-8-2 two-step contract: after createReference returns
+// 201 {id}, the extension may POST the actual PDF bytes for that reference
+// to /references/{id}/pdf-bytes (raw application/pdf body). BE-8-7's Flow A
+// (direct-PDF tab) + Flow B (translator returned attachments[].pdf) both
+// call this.
+//
+// Response envelope (per BE-8-2 AC2):
+//   200 {status:"attached", referenceId}     — bytes upload won the race
+//   200 {status:"already_attached", referenceId} — another writer won
+//   400 — empty body / non-PDF magic / invalid id shape
+//   403 — reference not owned by active user
+//   404 — reference not found
+//   408 — server-side TimeoutLayer fired (60s — bytes started uploading but
+//         didn't finish). Distinct UX signal from popup-side 'timeout'.
+//   413 — body exceeds 50 MiB
+//   503 — Milton not signed in
+//
+// Uses fetch + AbortController for both internal timeout + caller-side
+// cancellation. The BE-8-7 Task 6 scope cut dropped the upload-progress UI,
+// so no XHR/onProgress branch — fetch is sufficient. (If a future story
+// re-introduces a progress bar, swap to XMLHttpRequest's upload.onprogress
+// or fetch + TransformStream wrapper at that time.)
+
+export type AttachPdfBytesResult =
+  | { ok: true; status: 'attached' | 'already_attached'; referenceId: string }
+  | {
+      ok: false
+      status: 400 | 403 | 404 | 408 | 413 | 503
+      message: string
+      detail?: string
+    }
+  | { ok: false; status: 'network-error' | 'timeout'; message: string }
+
+export interface AttachPdfBytesOptions {
+  /** Default 90_000 ms (60s server-side timeout + 30s headroom for slow WiFi). */
+  timeoutMs?: number
+  /**
+   * Optional external AbortSignal (popup's beforeunload handler wires this
+   * to cancel the upload on popup close). Cancellation via this signal
+   * surfaces as `status: 'network-error'`; the internal timeout fires
+   * `status: 'timeout'` — two outcomes, two statuses (M6 from BE-8-7
+   * code-review).
+   */
+  signal?: AbortSignal
+}
+
+const ATTACH_PDF_DEFAULT_TIMEOUT_MS = 90_000
+
+/**
+ * POST PDF bytes to `/references/{referenceId}/pdf-bytes` (BE-8-2 endpoint).
+ *
+ * Callers MUST pass the RAW reference-id string (a UUID from
+ * createReference's 201 response). Internal `encodeURIComponent` is
+ * defense-in-depth; double-encoding (caller pre-encodes) would produce
+ * `%252F` and fail validation server-side.
+ */
+export async function attachPdfBytes(
+  referenceId: string,
+  bytes: ArrayBuffer,
+  opts?: AttachPdfBytesOptions,
+): Promise<AttachPdfBytesResult> {
+  // BT5: body-cap pre-check. Save a wasted round-trip when the bytes are
+  // already over the documented cap. Matches BE-8-2's server-side limit.
+  if (bytes.byteLength > MAX_PDF_BYTES) {
+    return {
+      ok: false,
+      status: 413,
+      message: `PDF too large (${bytes.byteLength} bytes exceeds ${MAX_PDF_BYTES})`,
+    }
+  }
+  if (bytes.byteLength === 0) {
+    return {
+      ok: false,
+      status: 400,
+      message: 'PDF body is empty',
+    }
+  }
+
+  const url = `${CONNECTOR_BASE}/references/${encodeURIComponent(referenceId)}/pdf-bytes`
+  const timeoutMs = opts?.timeoutMs ?? ATTACH_PDF_DEFAULT_TIMEOUT_MS
+  const externalSignal = opts?.signal
+
+  const ctrl = new AbortController()
+  const onExternalAbort = (): void => ctrl.abort()
+  if (externalSignal !== undefined) {
+    if (externalSignal.aborted) ctrl.abort()
+    else externalSignal.addEventListener('abort', onExternalAbort, { once: true })
+  }
+  // M6: track which source aborted so we can distinguish local-timeout
+  // (`status: 'timeout'`) from external-cancel (`status: 'network-error'`).
+  let timeoutTriggered = false
+  const t = setTimeout(() => {
+    timeoutTriggered = true
+    ctrl.abort()
+  }, timeoutMs)
+
+  let resp: Response
+  try {
+    resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/pdf' },
+      body: new Blob([bytes], { type: 'application/pdf' }),
+      signal: ctrl.signal,
+    })
+  } catch (e) {
+    clearTimeout(t)
+    if (externalSignal !== undefined) {
+      externalSignal.removeEventListener('abort', onExternalAbort)
+    }
+    if (ctrl.signal.aborted) {
+      if (timeoutTriggered) {
+        return {
+          ok: false,
+          status: 'timeout',
+          message: `upload did not complete within ${timeoutMs} ms`,
+        }
+      }
+      // External signal aborted — caller cancelled (e.g., popup beforeunload).
+      return { ok: false, status: 'network-error', message: 'aborted' }
+    }
+    return {
+      ok: false,
+      status: 'network-error',
+      message: e instanceof Error ? e.message : 'Network error',
+    }
+  }
+  clearTimeout(t)
+  if (externalSignal !== undefined) {
+    externalSignal.removeEventListener('abort', onExternalAbort)
+  }
+  return parseAttachResponse(resp, referenceId)
+}
+
+async function parseAttachResponse(
+  resp: Response,
+  referenceId: string,
+): Promise<AttachPdfBytesResult> {
+  let parsed: unknown
+  try {
+    parsed = await resp.json()
+  } catch {
+    parsed = {}
+  }
+  const data = (typeof parsed === 'object' && parsed !== null
+    ? parsed
+    : {}) as Record<string, unknown>
+
+  switch (resp.status) {
+    case 200: {
+      const status = data.status === 'already_attached' ? 'already_attached' : 'attached'
+      // referenceId in the response is informational; we already have it.
+      return { ok: true, status, referenceId }
+    }
+    case 400:
+      return {
+        ok: false,
+        status: 400,
+        message: String(data.message ?? 'Bad request'),
+        detail: data.detail !== undefined ? String(data.detail) : undefined,
+      }
+    case 403:
+      return {
+        ok: false,
+        status: 403,
+        message: String(data.message ?? 'Reference not owned by active user'),
+      }
+    case 404:
+      return {
+        ok: false,
+        status: 404,
+        message: String(data.message ?? 'Reference not found'),
+      }
+    case 408:
+      return {
+        ok: false,
+        status: 408,
+        message: String(data.message ?? 'Upload timed out at the connector'),
+      }
+    case 413:
+      return {
+        ok: false,
+        status: 413,
+        message: String(data.message ?? 'PDF too large'),
+      }
+    case 503:
+      return {
+        ok: false,
+        status: 503,
+        message: String(data.message ?? 'Milton is not signed in'),
+        detail: data.detail !== undefined ? String(data.detail) : undefined,
+      }
+    default:
+      return {
+        ok: false,
+        status: 'network-error',
+        message: `Unexpected response: ${resp.status}`,
+      }
+  }
 }
