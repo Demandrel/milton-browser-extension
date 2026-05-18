@@ -17,6 +17,7 @@
 import type { BundledTranslator, TranslatorMetadata } from './zotero-types'
 import pin from '../../translator-bundle-pin.json' with { type: 'json' }
 import { bytesToHex } from './manifest-verify'
+import type { Manifest } from './translator-fetcher'
 
 interface BundleEntry {
   source: string
@@ -328,4 +329,102 @@ export function listBundledTranslators(): BundledTranslator[] {
 // Kept for backward compat with BE-8-4 tests; new tests prefer _resetForTests.
 export function _resetIdIndexForTests(): void {
   idIndex = null
+}
+
+// ─── BE-8-9: cached-fresher resolver ─────────────────────────────────────
+//
+// `chrome.storage.local['translator-fetched:{uuid}']` may hold a version of
+// the translator that's newer than the build-time bundled bytes (the SW's
+// periodic auto-refresh writes there when manifest SHA diverges from the
+// pin). At runtime we want to prefer that fresher cache entry — but only
+// after re-verifying it against the CURRENT manifest entry's SHA, so a
+// stale cache entry never wins against a newer manifest.
+//
+// Three-way decision (cached vs bundle pin vs manifest entry):
+//   - currentManifest === null  → caller has no manifest in hand (e.g.,
+//     the sandbox path; manifest fetch failed; bootstrap before any
+//     refresh ran). Skip the cached check; fall straight through to the
+//     bundled version. Keeps the resolver non-blocking + correctly-degraded.
+//   - manifest entry absent     → upstream removed the translator. Use the
+//     bundled version (graceful degradation; removal is rare).
+//   - manifest sha === pin sha  → bundled is still current. No need to
+//     consult the cache; fall through to bundled.
+//   - manifest sha !== pin sha  → bundled is stale. If a cached entry
+//     exists whose sha matches the current manifest sha → return cached.
+//     Otherwise → fall through to bundled (the refresh path will fetch
+//     the new version on its next alarm; we don't trigger an on-demand
+//     fetch from the resolver — that would block sandbox load + defeat
+//     the bounded-latency property).
+//
+// Trust chain: cached entries are written by translator-fetcher's
+// fetchTranslatorFromCdn which verifies SHA-256 against the manifest at
+// fetch time. The manifest itself was Ed25519-verified at fetch time.
+// At resolution time we re-verify the cached SHA against the CURRENT
+// manifest entry's SHA — so a stale cache entry (one whose SHA no longer
+// matches the live manifest) is treated as unusable.
+
+const TRANSLATOR_CACHE_KEY_PREFIX = 'translator-fetched:'
+
+interface CachedTranslatorEntry {
+  metadata: TranslatorMetadata
+  body: string
+  sha256: string
+  fetchedAt: number
+}
+
+function isStorageAvailable(): boolean {
+  return typeof chrome !== 'undefined' && chrome.storage !== undefined
+}
+
+async function loadCachedTranslator(translatorID: string): Promise<CachedTranslatorEntry | null> {
+  if (!isStorageAvailable()) return null
+  const key = `${TRANSLATOR_CACHE_KEY_PREFIX}${translatorID}`
+  try {
+    const result = (await chrome.storage.local.get(key)) as Record<string, unknown>
+    const raw = result[key]
+    if (raw === undefined || raw === null) return null
+    const cached = raw as Partial<CachedTranslatorEntry>
+    if (
+      typeof cached.body !== 'string' ||
+      typeof cached.sha256 !== 'string' ||
+      typeof cached.fetchedAt !== 'number' ||
+      cached.metadata === undefined
+    ) {
+      return null
+    }
+    return cached as CachedTranslatorEntry
+  } catch (err) {
+    // Surface storage faults (extension shutdown, policy-disabled storage,
+    // corrupted entry) in DevTools rather than silently masquerading as a
+    // cache miss. Behavior unchanged — caller falls through to bundled.
+    // Pattern mirrors translator-fetcher.ts:319-324 (loadCachedManifest).
+    console.warn(
+      `[translator-bundle] loadCachedTranslator(${translatorID}): storage read failed; treating as cache miss:`,
+      err instanceof Error ? err.message : String(err),
+    )
+    return null
+  }
+}
+
+export async function getResolvedTranslator(
+  translatorID: string,
+  currentManifest: Manifest | null,
+): Promise<BundledTranslator | null> {
+  if (currentManifest !== null) {
+    const manifestEntry = currentManifest.translators.find(
+      (t) => t.translatorID === translatorID,
+    )
+    const bundlePinSha = (pin.bundleHashes as Record<string, string>)[translatorID]
+    if (
+      manifestEntry !== undefined &&
+      bundlePinSha !== undefined &&
+      manifestEntry.sha256 !== bundlePinSha
+    ) {
+      const cached = await loadCachedTranslator(translatorID)
+      if (cached !== null && cached.sha256 === manifestEntry.sha256) {
+        return { metadata: cached.metadata, body: cached.body }
+      }
+    }
+  }
+  return getBundledTranslator(translatorID)
 }

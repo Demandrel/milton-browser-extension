@@ -76,6 +76,71 @@ describe('host-bridge protocol guards', () => {
   })
 })
 
+// ────────────────────────────────────────────────────────────────────────
+// BE-8-9 / code-review M2: inlineTranslator field is the IPC seam for
+// the cached-fresher resolver. It traverses popup → offscreen-client →
+// chrome.runtime.sendMessage → offscreen → postMessage → sandbox, with
+// optional-field forwarding at every hop. These tests pin the bridge end
+// (where the field is born and where the wire protocol is defined) so a
+// future rename / removal at the bridge surfaces immediately rather than
+// silently dropping the cached-fresher win.
+// ────────────────────────────────────────────────────────────────────────
+
+describe('inlineTranslator IPC field (BE-8-9 / code-review M2)', () => {
+  const fakeInline = {
+    metadata: { translatorID: ARXIV_TRANSLATOR_ID, label: 'arXiv (cached fresher)' },
+    body: '/* CACHED FRESHER BODY */',
+  }
+
+  it('makeTranslateRequest carries inlineTranslator through to the message envelope', () => {
+    const req = makeTranslateRequest({
+      requestId: 'r-inline',
+      url: 'https://arxiv.org/abs/2303.08774',
+      translatorId: ARXIV_TRANSLATOR_ID,
+      inlineTranslator: fakeInline,
+    })
+    expect(req.inlineTranslator).toBeDefined()
+    expect(req.inlineTranslator!.body).toBe('/* CACHED FRESHER BODY */')
+    expect(req.inlineTranslator!.metadata.translatorID).toBe(ARXIV_TRANSLATOR_ID)
+  })
+
+  it('makeTranslateRequest leaves inlineTranslator undefined when not provided (common path)', () => {
+    const req = makeTranslateRequest({
+      requestId: 'r-noinline',
+      url: 'https://arxiv.org/abs/2303.08774',
+      translatorId: ARXIV_TRANSLATOR_ID,
+    })
+    expect(req.inlineTranslator).toBeUndefined()
+  })
+
+  it('inlineTranslator survives JSON round-trip (covers postMessage clone semantics)', () => {
+    const req = makeTranslateRequest({
+      requestId: 'r-rt',
+      url: 'https://arxiv.org/abs/2303.08774',
+      translatorId: ARXIV_TRANSLATOR_ID,
+      inlineTranslator: fakeInline,
+    })
+    const serialized = JSON.parse(JSON.stringify(req))
+    expect(isTranslateRequest(serialized)).toBe(true)
+    expect(serialized.inlineTranslator).toBeDefined()
+    expect(serialized.inlineTranslator.body).toBe('/* CACHED FRESHER BODY */')
+    expect(serialized.inlineTranslator.metadata.label).toBe('arXiv (cached fresher)')
+  })
+
+  it('isTranslateRequest still accepts the envelope when inlineTranslator is present', () => {
+    // Regression guard: a future type-guard change that tightened the shape
+    // check could silently reject inline-bearing envelopes — that would
+    // surface as cached-fresher entries never executing.
+    const req = makeTranslateRequest({
+      requestId: 'r-guard',
+      url: 'https://arxiv.org/abs/2303.08774',
+      translatorId: ARXIV_TRANSLATOR_ID,
+      inlineTranslator: fakeInline,
+    })
+    expect(isTranslateRequest(req)).toBe(true)
+  })
+})
+
 describe('isFromExpectedSource', () => {
   // Build a minimal MessageEvent-like with a specific source. Real Window
   // references aren't available in `vitest environment: node`, so we use

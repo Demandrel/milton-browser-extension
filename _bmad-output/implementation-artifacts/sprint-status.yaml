@@ -117,7 +117,7 @@ development_status:
   # Risk-staircase ordered (greenfield → integration spike → architectural).
   # ──────────────────────────────────────────────────────────────────────────
 
-  epic-be-8: in-progress
+  epic-be-8: in-progress  # 2026-05-18 — BE-8-1 → BE-8-7 done; BE-8-8 (LLM-fallback) + original BE-8-9 (server-downscale) deferred to future epic-21 (IA features); BE-8-9 slot REPURPOSED for auto-refresh-translators (extension-side, closes Zotero-pattern gap). Reopened from `done` 2026-05-18.
 
   # BE-8-1: Translator-mirror CDN setup. Cloudflare CDN + static origin
   # (R2 or KV); mirrors zotero/translators subset; metadata endpoint
@@ -178,22 +178,71 @@ development_status:
   # Theme: Capture parity.
   BE-8-7-class-2-capture-and-paste-failure-ux: done
 
-  # BE-8-8: LLM-fallback in Milton-desktop. Rust calls Anthropic via
-  # Milton-server key broker (/api/llm/extract relay — desktop never sees
-  # the API key); trigger thresholds (PDF-only with no embedded metadata;
-  # translator returns <N fields; user-flagged "this looks incomplete");
-  # one-time opt-in consent; Pro-tier gate; per-call cost ceiling +
-  # per-user monthly cap; PostHog ai_extraction_used event.
-  # High risk. Depends on BE-8-7 (needs Class 2 PDF surface for E2E test).
-  # Theme: LLM-fallback differentiation.
-  BE-8-8-llm-fallback-in-milton-desktop: backlog
+  # BE-8-8: DEFERRED FROM BE-8 SPRINT (2026-05-18, via /bmad_bmm_create-story BE-8-8).
+  # Original scope: LLM-fallback for sparse metadata. Trigger thresholds
+  # (PDF-only with no embedded metadata; translator returns <N fields;
+  # user-flagged "this looks incomplete"); one-time opt-in consent; Pro-tier
+  # gate; per-call cost ceiling + per-user monthly cap; PostHog
+  # ai_extraction_used event. LLM provider: Anthropic via Milton-server key
+  # broker (/api/llm/extract relay — caller never sees the API key).
+  #
+  # Status: deferred to a future IA-features epic in this repo (likely
+  # "epic-21" per Pierre 2026-05-18), bundled with other IA features for
+  # reasons not fully specified at deferral time. Not in scope for BE-8
+  # (capture parity); not (per current thinking) in scope for Milton-saas
+  # either.
+  #
+  # Architectural note (open for epic-21 planning): Charter v2 Decision #3
+  # locked LLM call in Milton-desktop, but that decision is CONTESTABLE.
+  # The extension is arguably the more natural home because at save-time
+  # the extension already has: PDF bytes (post-BE-8-7 client-side fetch),
+  # translator output (translators run via chrome.scripting.executeScript
+  # since BE-8-6), and Milton-server auth (BE-4 EdDSA JWT). Calling
+  # /api/llm/extract from the extension keeps the Anthropic API key
+  # server-brokered (same security as a Milton-desktop call) and avoids
+  # an extra hop. The "user-flagged this looks incomplete" post-hoc
+  # trigger is the only piece that genuinely needs a Milton-app UX
+  # surface. Revisit Decision #3 during epic-21 design.
+  #
+  # When epic-21 is created, recreate this row under epic-21 with a
+  # fresh story key.
 
-  # BE-8-9: Server downscale + GROBID retire. Migrate translate.milton.so to
-  # smaller hosting (small VPS / Fly free / Cloudflare Worker — operational
-  # call at execution); remove GROBID; verify Class 1 + DOI/Crossref +
-  # LLM-key-broker still work; cost-tracking dashboard.
-  # Low-medium risk. Depends on BE-8-8.
-  # Theme: Server downsize.
-  BE-8-9-server-downscale-and-grobid-retire: backlog
+  # BE-8-9 — ORIGINAL SCOPE DEFERRED, SLOT REPURPOSED (2026-05-18).
+  # Original BE-8-9 scope was: Server downscale + GROBID retire. Migrate
+  # translate.milton.so to smaller hosting; remove GROBID; verify Class 1 +
+  # DOI/Crossref + LLM-key-broker still work; cost-tracking dashboard. That
+  # scope is DEFERRED to future epic-21 (IA features) alongside BE-8-8 —
+  # cascades behind BE-8-8's LLM-fallback (which provides the LLM-key-broker
+  # to verify post-downscale). See BE-8-8 comment block above for the
+  # epic-21 reasoning.
+  #
+  # BE-8-9 (NEW SCOPE 2026-05-18) — Background auto-refresh of bundled
+  # translators in the extension.
+  # On extension startup (and every ~6h thereafter), fetch
+  # translators.milton.so/repo/metadata; for each bundled translator whose
+  # SHA-256 differs from the manifest, lazy-fetch the new version via the
+  # existing translator-fetcher.ts path and prefer the fetched version at
+  # runtime. Same Ed25519 manifest + SHA-256 per-translator verification
+  # chain as BE-8-5. Cache strategy: reuse chrome.storage.local entries
+  # already maintained by translator-fetcher.ts.
+  #
+  # Closes the gap where bundled translators stay stale until the next
+  # extension release. Charter Decision 6 ("bundled subset pinned at build")
+  # remains true at BUILD time (reproducible builds); runtime override
+  # via auto-refresh is orthogonal and matches Zotero Connector's proven
+  # model. Without this, every publisher HTML change requires an extension
+  # release — and Milton's sideload-first distribution (Charter Decision 9)
+  # has no auto-update mechanism, so a release means "users manually
+  # re-sideload" — effectively means most users stay on broken translators
+  # indefinitely.
+  #
+  # Depends on: BE-8-1 (translator-mirror CDN), BE-8-5 (lazy-fetch path +
+  # signing/cache infrastructure). No dependency on BE-8-7/8.
+  # Theme: capture parity / staleness mitigation.
+  # Risk: low-medium. Touches extension startup path + translator resolution
+  # order (bundled-vs-fetched). Regression risk: bundled translator could
+  # be replaced by a worse upstream version; mitigation = manifest signing
+  # is the trust boundary, plus existing SHA-256 verification.
+  BE-8-9-auto-refresh-bundled-translators: review
 
   epic-be-8-retrospective: optional
