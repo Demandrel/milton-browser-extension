@@ -245,4 +245,43 @@ development_status:
   # is the trust boundary, plus existing SHA-256 verification.
   BE-8-9-auto-refresh-bundled-translators: done
 
+  # BE-8-10 (NEW SCOPE 2026-05-19) — Chrome Web Store publication, v0.2 public
+  # launch. Charter v2 Decision 9 originally framed Web Store distribution as
+  # a separate epic post-stabilization; Pierre 2026-05-19 reversed that scope
+  # choice — BE-8 is feature-complete (8-of-9 stories done; BE-8-8 deferred to
+  # future epic-21), distribution is the bottleneck to real-user feedback, and
+  # opening a separate epic for one publication story is ceremony. AC10 of the
+  # story backfills a Charter v2 clarification so the deviation is documented.
+  #
+  # Pierre 2026-05-19 pre-draft decisions: public-from-day-1 (overrode Unlisted
+  # recommendation; trades support burden for real-user data); Demandrel org
+  # account ownership (transfer-safe); DoD = "submitted for review" (reviewer
+  # cycles handled as Review Follow-ups AI); PRIVACY.md via GitHub Pages
+  # (same-domain governance); version 0.2.0 (minor bump, preserves 1.0
+  # headroom); ship without waiting for partner's anti-captcha (memory
+  # `project-anti-captcha-coming`; → v0.3 follow-up release).
+  #
+  # Story scope: production-build hardening (DEV-only hook removal — method-17
+  # found a real `sandbox.ts:402` leak shipping `window.miltonRuntimeSpike` in
+  # prod today), PRIVACY.md + GitHub Pages, store-assets/cws/ directory (copy
+  # + screenshots + promo tile + permission justifications + listing-fields
+  # index + remote-code disclosure citing Zotero Connector precedent), CWS
+  # developer account registration ($5 fee, 2FA on Demandrel-owned email),
+  # fresh-profile smoke (arXiv success / sciencedirect fallback / signed-out
+  # CTA + SW boot + BE-8-9 install-refresh log), submit, Charter v2 Decision 9
+  # alignment note.
+  #
+  # ~60% Claude-executable (script + PRIVACY.md + permissions.md + copy +
+  # version bump + CI step + charter edit) + 40% Pierre-operational (account
+  # registration, screenshot capture, fresh-profile smoke, submission click).
+  #
+  # Depends on: BE-8-1 through BE-8-7 + BE-8-9 (all done). Unblocks: real-user
+  # usage data; partner's anti-captcha integration (v0.3); epic-21 (AI features
+  # — once a Pro-tier exists to target).
+  # Risk: medium — CWS review may flag remote-code policy (translator JS
+  # fetched + evaled in sandbox); mitigation = pre-written justification
+  # citing Ed25519 + SHA-256 verification + Zotero Connector precedent.
+  # Theme: distribution.
+  BE-8-10-chrome-web-store-publication: ready-for-dev
+
   epic-be-8-retrospective: optional
