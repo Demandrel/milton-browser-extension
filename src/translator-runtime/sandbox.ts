@@ -399,7 +399,13 @@ async function bootstrapAll(): Promise<void> {
   }
   eagerRegisterBundled(verifiedAfterIntegrity)
   wirePostMessageListener()
-  wireSpikeTrigger()
+  // BE-8-10 — DEV-only spike trigger. Without this gate, `window.miltonRuntimeSpike`
+  // ships in production sandbox bundles (CWS-published artifact). Vite strips the
+  // branch at production build (`import.meta.env.DEV === false`). Method-17 finding
+  // 2026-05-19 — confirmed leak in pre-BE-8-10 builds.
+  if (import.meta.env.DEV) {
+    wireSpikeTrigger()
+  }
   console.log(`[milton-sandbox] ready (protocol v${PROTOCOL_VERSION})`)
 }
 

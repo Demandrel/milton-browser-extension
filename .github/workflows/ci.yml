@@ -64,6 +64,15 @@ jobs:
       - name: Build extension
         run: pnpm build
 
+      # BE-8-10 AC1 / AC11 — production-bundle hardening guardrail.
+      # Re-runs `pnpm build` inside the script for hermeticity (build is fast,
+      # ~500ms), then greps dist/ for DEV-only spike hooks + spike-page
+      # artifacts. Exits non-zero if any leak detected so a PR that drops a
+      # DEV gate or re-adds spike-page to the production input never reaches
+      # the Chrome Web Store artifact undetected.
+      - name: Verify production bundle (no DEV-only hooks shipping)
+        run: bash scripts/verify-production-bundle.sh
+
       - name: Upload extension artifact
         uses: actions/upload-artifact@v4
         with:
