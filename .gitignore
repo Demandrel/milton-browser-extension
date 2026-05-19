@@ -3,3 +3,7 @@ dist/
 .env.local
 *.log
 .DS_Store
+# BE-8-10 — CWS upload artifact produced by Task 7.2; reproducible from
+# `pnpm build` + `cd dist && zip -r ../milton-extension-v<version>.zip .`.
+# Reviewer + dev-uploader workflow only; never commit the binary.
+milton-extension-v*.zip

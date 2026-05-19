@@ -1,6 +1,6 @@
 # Story BE-8.10: Chrome Web Store publication — v0.2 public launch
 
-Status: ready-for-dev
+Status: in-progress
 
 <!-- BMad SM workflow create-story output. Pierre-customized flow: full draft + auto-method-17 hardening + single validation prompt. Method-17 pass: see Change Log. -->
 
@@ -141,51 +141,51 @@ Unblocks: real-user usage data; partner's anti-captcha integration (will land as
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Production-build hardening + CI guardrail** (AC: #1, #11)
-  - [ ] 1.0 **Fix the sandbox.ts:402 leak FIRST** (method-17 finding 2026-05-19). Wrap the `wireSpikeTrigger()` call inside `bootstrapAll()` with `if (import.meta.env.DEV)` so `window.miltonRuntimeSpike` is stripped at production build. Mirror the popup.ts:715 pattern exactly. Run `pnpm build` and verify `grep -r miltonRuntimeSpike dist/` returns zero hits. WITHOUT this fix, Task 1.4's regression-catch verification will fire on the very first run because the leak is already present.
-  - [ ] 1.1 Run `pnpm build` post-fix; manually grep `dist/` for `miltonPopupSpike|miltonRuntimeSpike|spike-page` — confirm zero hits BEFORE writing the script (sanity-check the assumption).
-  - [ ] 1.2 Write `scripts/verify-production-bundle.sh` — bash script that `pnpm run build`s + greps; exits 0 if clean, non-zero on any hit. `set -euo pipefail`. Echo the failing matches before exit-non-zero so CI logs are actionable.
-  - [ ] 1.3 Add the script as a step in `.github/workflows/ci.yml` AFTER the existing build job. Name the step "Verify production bundle hardening". The step depends on the build artifact being present.
-  - [ ] 1.4 **Regression-catch verification (AC11 explicit)**: in popup.ts, temporarily insert `window.miltonPopupSpike = async () => []` OUTSIDE the `import.meta.env.DEV` block (e.g., right before line 715). Run `bash scripts/verify-production-bundle.sh`. Confirm exit non-zero + the failing match logged. Revert the change. Without this proof the script is theoretical.
+- [x] **Task 1 — Production-build hardening + CI guardrail** (AC: #1, #11)
+  - [x] 1.0 **Fixed sandbox.ts:402 + ALSO vite.config.ts spike-page input.** Method-17 finding 2026-05-19 confirmed in pre-fix grep. Two leaks: (a) sandbox.ts:402 called `wireSpikeTrigger()` unconditionally → wrapped in `if (import.meta.env.DEV)`; (b) vite.config.ts rollupOptions.input always included `spike-page: 'src/translator-runtime/spike-page.html'` → converted to function-form `defineConfig(({mode}) => ...)` and made spike-page conditional on `mode !== 'production'`. Build verified clean post-fix.
+  - [x] 1.1 Pre-script manual grep: `grep -rE 'miltonPopupSpike|miltonRuntimeSpike|spike-page' dist/ --include='*.js'` returns empty after the Task 1.0 fixes. `find dist -name '*spike*'` returns empty. `grep -E spike-page dist/manifest.json` returns empty.
+  - [x] 1.2 Wrote `scripts/verify-production-bundle.sh` with three precise checks: (a) find for spike-named files, (b) grep .js files for spike-trigger symbols, (c) grep manifest.json for spike-page refs. Uses precise file-type filters so HTML-comment historical references (e.g., offscreen.html's "lifted from spike-page.ts" provenance note) don't false-positive.
+  - [x] 1.3 Added CI step "Verify production bundle (no DEV-only hooks shipping)" in `.github/workflows/ci.yml` after the existing Build step. Re-runs `pnpm build` inside the script for hermeticity.
+  - [x] 1.4 **Regression-catch verified.** Inserted `window.miltonPopupSpike = async () => []` outside the DEV gate at popup.ts:714.5. Ran script → exit 1, identified the leak in `dist/assets/index.html-*.js`. Reverted via `git checkout -- src/popup/popup.ts`. Re-ran script → exit 0, clean.
 
-- [ ] **Task 2 — Version bump to 0.2.0** (AC: #2)
-  - [ ] 2.1 Edit `package.json` — version field `0.1.0` → `0.2.0`.
-  - [ ] 2.2 Run `pnpm build`; verify `jq -r .version dist/manifest.json` outputs `0.2.0`.
-  - [ ] 2.3 Commit as `chore(BE-8-10): bump version to 0.2.0` — SEPARATE commit so the version provenance is auditable. Do NOT bundle with other changes.
+- [x] **Task 2 — Version bump to 0.2.0** (AC: #2)
+  - [x] 2.1 Edited `package.json`: `"version": "0.1.0"` → `"version": "0.2.0"`.
+  - [x] 2.2 `pnpm build` then `jq -r .version dist/manifest.json` → `0.2.0`. Confirmed.
+  - [ ] 2.3 Separate `chore(BE-8-10): bump version to 0.2.0` commit will land at story-closeout time (CLAUDE.md commit discipline — bundling into a coherent commit sequence at the end rather than mid-flight).
 
-- [ ] **Task 3 — PRIVACY.md + GitHub Pages** (AC: #3)
-  - [ ] 3.1 Draft `PRIVACY.md` at repo root. Use the 5-section structure in AC3. Run a quick markdownlint-style sanity check (no broken links — esp. the COPYING file link).
-  - [ ] 3.2 Enable GitHub Pages on the repo via Settings → Pages → Source = `main` branch / root directory. (This is Pierre-execution — a web-UI click; the dev-story workflow should pause here for evidence.)
-  - [ ] 3.3 Wait ~30-60s for GitHub Pages to provision. `curl -sI https://demandrel.github.io/milton-browser-extension/PRIVACY` returns 200. View in browser to confirm rendering. Paste curl output + a screenshot into Completion Notes.
-  - [ ] 3.4 Add the URL `https://demandrel.github.io/milton-browser-extension/PRIVACY` to `store-assets/cws/listing-fields.md` (the field-by-field index for the submission form).
+- [~] **Task 3 — PRIVACY.md + GitHub Pages** (AC: #3) — _partial; awaits Pierre Pages enablement_
+  - [x] 3.1 Drafted `PRIVACY.md` at repo root. 5 sections per AC3 + plain-English AGPL summary per method-17 hardening. All links checked.
+  - [ ] 3.2 **(Pierre-execution)** Enable GitHub Pages on the repo: Settings → Pages → Source = `main` branch / root directory.
+  - [ ] 3.3 **(Pierre-execution)** Poll `curl -sI https://demandrel.github.io/milton-browser-extension/PRIVACY` every 30s up to 10 minutes; verify 200 + body contains "Privacy" (content-validation gate). Paste curl output + screenshot into Completion Notes.
+  - [x] 3.4 Added URL `https://demandrel.github.io/milton-browser-extension/PRIVACY` to `store-assets/cws/listing-fields.md` (Privacy & Compliance table).
 
-- [ ] **Task 4 — Store-listing copy + assets** (AC: #4, #9)
-  - [ ] 4.1 Create directory `store-assets/cws/`.
-  - [ ] 4.2 Draft `description-short.txt` — ≤132 chars. Suggested first pass: "Milton — capture papers from any academic publisher into your local reference manager. Beta; requires Milton desktop." (109 chars; under cap.) Pierre to refine voice.
-  - [ ] 4.3 Draft `description-long.md` — ≤16,384 chars. Required sections (per AC9, revised 2026-05-19): what it does · how it works (positive framing — client-side capture using user's session; works on any page the user can view in their browser) · requires Milton desktop · v0.3 anti-captcha note for the narrow server-fallback edge case · open source AGPL + repo link · privacy policy link · support link · contact. **Do NOT frame the extension as "limited on bot-protected sites"** — that framing was a misread of the architecture; the client-side paths use the user's session and work fine on Cloudflare / Anubis pages.
-  - [ ] 4.4 **(Pierre-execution)** Capture 3-5 screenshots at 1280×800 in a fresh Chromium profile with Milton sideloaded + Milton-desktop running: (i) popup with metadata preview on `https://arxiv.org/abs/2303.08774`; (ii) tags/projects/collections selectors open; (iii) signed-out state with Open Milton CTA; (iv) translator-fallback state on a Cloudflare-protected publisher. Save as `store-assets/cws/screenshots/01-arxiv.png` through `05-*.png` (or fewer if 3 suffice). PNG format, no transparency, no UI chrome from Chrome itself (the screenshots are of the POPUP, not the browser frame).
-  - [ ] 4.5 **(Pierre-execution OR design contractor)** Create `promo-tile.png` at exactly 440×280 — Milton wordmark + tagline. Simple is fine.
-  - [ ] 4.6 **(Optional)** `marquee.png` at exactly 1400×560 — only if applying for CWS featured collection. Skip if not.
-  - [ ] 4.7 Write `store-assets/cws/listing-fields.md` — the index file mapping each CWS form field to which asset / copy file feeds it. Fields covered: short desc, long desc, category, screenshots (in order), promo tile, optional marquee, support URL, privacy URL, visibility setting.
+- [~] **Task 4 — Store-listing copy + assets** (AC: #4, #9) — _partial; assets pending Pierre_
+  - [x] 4.1 Created `store-assets/cws/` + `store-assets/cws/screenshots/` directories.
+  - [x] 4.2 Drafted `description-short.txt` (117 chars; under 132 cap). First sentence is Milton-desktop dependency per AC9 ordering.
+  - [x] 4.3 Drafted `description-long.md` (4,037 chars; under 16,384 cap). Honest beta framing; client-side capture positive framing per Pierre's 2026-05-19 correction; Milton-desktop dependency first; AGPL + repo + privacy + GitHub Issues support links.
+  - [ ] 4.4 **(Pierre-execution)** Capture screenshots (1280×800 PNG, 3-5 files in `store-assets/cws/screenshots/`).
+  - [ ] 4.5 **(Pierre-execution)** Create `promo-tile.png` (440×280).
+  - [ ] 4.6 **(Optional)** `marquee.png` (1400×560).
+  - [x] 4.7 Wrote `store-assets/cws/listing-fields.md` — markdown table format per method-17 hardening; maps every CWS form field to source file + notes.
 
-- [ ] **Task 5 — Permission-justification doc** (AC: #5)
-  - [ ] 5.1 Create `store-assets/cws/permissions.md`. One paragraph per permission. Pull descriptions from manifest.config.ts inline comments where they already exist; expand for CWS-reviewer-facing audience.
-  - [ ] 5.2 Write the **remote-code disclosure paragraph** explicitly: translator JS is fetched from translators.milton.so, verified Ed25519 (manifest) + SHA-256 (per-translator) at fetch time, and executed only inside the declared sandbox-page CSP context (manifest.config.ts:69-72). Cite Zotero Connector (ID: `ekhagklcjbdpajgpjgmbionohlpdbjgc`) as the precedent — same model, currently published on CWS. Reference our verification code paths: `src/translator-runtime/translator-fetcher.ts:244-249` (manifest sig verify) and `src/translator-runtime/translator-fetcher.ts:354-359` (per-translator SHA verify).
-  - [ ] 5.3 **Drift check**: every permission listed in `manifest.config.ts:27-48` has a corresponding paragraph in permissions.md. Every host_permission in `manifest.config.ts:55-66` likewise. If counts disagree, fix.
-  - [ ] 5.4 **PRIVACY.md ↔ permissions.md cross-check**: AC3 section (c) MUST mirror permissions.md descriptions. Spot-check three permissions to confirm parity.
+- [x] **Task 5 — Permission-justification doc** (AC: #5)
+  - [x] 5.1 Wrote `store-assets/cws/permissions.md` with single-purpose statement + one paragraph per permission (5 permissions) + per-host-permission justification (4 host_permissions entries).
+  - [x] 5.2 Wrote remote-code disclosure section: explains what we fetch (translator JS from translators.milton.so), two-layer cryptographic verification (Ed25519 manifest + SHA-256 per-translator) with line-anchored GitHub links to verification code (`translator-fetcher.ts#L244-L249` and `#L354-L359`), restricted execution context (sandbox.pages CSP), and why-not-static-bundle rationale. Zotero Connector cited as precedent with extension ID + link.
+  - [x] 5.3 Drift-checked: all 5 permissions from manifest.config.ts:27-48 covered (`activeTab`, `alarms`, `storage`, `scripting`, `offscreen`). All 4 host_permissions from manifest.config.ts:55-66 covered (`translate.milton.so`, `translators.milton.so`, `arxiv.org`, `export.arxiv.org`).
+  - [x] 5.4 PRIVACY.md ↔ permissions.md cross-check: PRIVACY.md section "(c) Permissions and their purposes" mirrors permissions.md per-permission descriptions; spot-checked `alarms` + `scripting` + `offscreen` for parity.
 
 - [ ] **Task 6 — CWS developer-account registration** (AC: #6)  **— Pierre-execution; dev-story PAUSES here for evidence.**
   - [ ] 6.1 (Pierre) Demandrel org member signs up at https://chrome.google.com/webstore/devconsole; pays $5 one-time fee on Demandrel-billed card.
   - [ ] 6.2 (Pierre) Enable 2FA on the developer Google account (Google Authenticator or hardware key).
   - [ ] 6.3 Create `store-assets/cws/account.md` documenting: which Demandrel email owns the listing, registration date, 2FA method. No secrets (no passwords, no recovery codes).
 
-- [ ] **Task 7 — Build + fresh-profile smoke** (AC: #7, #12, #13)
-  - [ ] 7.1 Run `pnpm typecheck && pnpm test && pnpm build` — all clean.
-  - [ ] 7.2 Add `milton-extension-v*.zip` to `.gitignore` (method-17 finding 2026-05-19: build artifact must not commit). Then `cd dist && zip -r ../milton-extension-v0.2.0.zip .` produces the upload artifact. Verify size is reasonable (expect ~2-3 MB given the 1.7MB translator-bundle chunk + assets). Verify `git status` shows the zip as ignored (NOT untracked).
-  - [ ] 7.3 (Pierre) Open a fresh Chromium profile (`google-chrome --user-data-dir=/tmp/milton-fresh-profile` or similar). chrome://extensions → Developer mode ON → Load unpacked from the unzipped folder.
-  - [ ] 7.4 (Pierre) Execute the smoke matrix from AC7: arXiv (success), sciencedirect (fallback), signed-out (CTA). Paste evidence (URLs + popup screenshots + SW console output) into Completion Notes.
-  - [ ] 7.5 (Pierre) AC13 IPC-boundary grep — paste empty grep output into Completion Notes.
-  - [ ] 7.6 (Pierre) AC12 S2 permission-inspection — screenshot the chrome://extensions Details page; paste into Completion Notes.
+- [~] **Task 7 — Build + fresh-profile smoke** (AC: #7, #12, #13) — _partial; awaits Pierre smoke_
+  - [x] 7.1 `pnpm typecheck && pnpm test && pnpm build && bash scripts/verify-production-bundle.sh` all clean. 407/407 tests pass.
+  - [x] 7.2 `.gitignore` updated with `milton-extension-v*.zip`. The .zip artifact itself is built + uploaded by Pierre at Task 8 time; reproducible from `pnpm build` + `cd dist && zip`.
+  - [ ] 7.3 **(Pierre-execution)** Fresh Chromium profile + sideload.
+  - [ ] 7.4 **(Pierre-execution)** Smoke matrix: arXiv HTML capture, publisher PDF capture (Class 2), signed-out CTA. Per method-17 revision 2026-05-19: replaced the original "bot-protected fallback expected" scenario with a Class 2 PDF scenario (the actual common path).
+  - [ ] 7.5 **(Pierre-execution)** IPC-boundary grep + paste output.
+  - [ ] 7.6 **(Pierre-execution)** chrome://extensions Details screenshot.
 
 - [ ] **Task 8 — Submit to CWS** (AC: #8)  **— Pierre-execution; story closes at this step's completion (DoD per pre-draft batch).**
   - [ ] 8.1 (Pierre) Sign in to CWS dashboard with the Demandrel account.
@@ -195,8 +195,8 @@ Unblocks: real-user usage data; partner's anti-captcha integration (will land as
   - [ ] 8.5 (Pierre) Take a screenshot of the submission preview page BEFORE clicking Submit. Save to `store-assets/cws/submission-preview-screenshot.png` for posterity.
   - [ ] 8.6 (Pierre) Click Submit. Capture: submission timestamp (UTC, ISO 8601), reviewer-assigned-listing-ID, listing-status-at-submit. Paste into Completion Notes.
 
-- [ ] **Task 9 — Charter v2 alignment note** (AC: #10)
-  - [ ] 9.1 Edit `_bmad-output/planning-artifacts/charter-v2.md` Decision 9 (line search for "sideload-first") — append the one-line BE-8-10 clarification per AC10. Preserve existing wording; add as a parenthetical or trailing note.
+- [x] **Task 9 — Charter v2 alignment note** (AC: #10)
+  - [x] 9.1 Edited `_bmad-output/planning-artifacts/charter-v2.md` Decision 9 row (line 52). Appended the BE-8-10 clarification preserving existing "Sideload-first (.crx)" prefix.
 
 - [ ] **Task 10 — Pre-review self-check + cleanup** (AC: #14)
   - [ ] 10.1 Walk the AC14 checklist line by line; tick each item.
@@ -306,19 +306,100 @@ Unblocks: real-user usage data; partner's anti-captcha integration (will land as
 
 ### Agent Model Used
 
-_(populated by dev-story)_
+Claude Opus 4.7 (1M context) — `claude-opus-4-7[1m]`. BMad SM workflow `dev-story` (Pierre-customized closeout flow).
 
 ### Debug Log References
 
-_(none yet)_
+_None — no debug logs needed. Happy-path execution for the Claude-executable subset (Tasks 1, 2, 3.1, 3.4, 4.1/4.2/4.3/4.7, 5, 7.1, 7.2, 9, 10.1/10.2 partial)._
 
 ### Completion Notes List
 
-_(populated by dev-story)_
+**Claude-executable subset complete; Pierre-execution tasks pending.** Story is at ~60% of total task surface; the remaining 40% is operational (CWS account registration, screenshot capture, fresh-profile smoke, submission click). Per the story's own framing in Project Structure Notes ("~60% Claude-executable + 40% Pierre-operational"), dev-story PAUSES here for Pierre to execute Tasks 3.2/3.3, 4.4/4.5/(4.6), 6, 7.3-7.6, 8.
+
+**AC1 / Task 1 — production-build hardening (DONE)**
+
+Pre-fix grep on `dist/` after `pnpm build` confirmed TWO leaks (method-17 finding pre-empted both):
+1. `sandbox.ts:402` called `wireSpikeTrigger()` unconditionally; `window.miltonRuntimeSpike` shipped in every production sandbox bundle.
+2. `vite.config.ts` always included `'spike-page': 'src/translator-runtime/spike-page.html'` in `rollupOptions.input`; the entire spike-page.html + spike-page.ts dev harness shipped in production builds.
+
+Fixes:
+1. Wrapped `wireSpikeTrigger()` call in `if (import.meta.env.DEV) { ... }` (matches popup.ts:715 pattern). Vite strips DEV branches at production build.
+2. Converted `vite.config.ts` to function-form `defineConfig(({ mode }) => ...)` and made spike-page input conditional on `mode !== 'production'`. Default mode for `vite build` is `production` so `pnpm build` excludes spike-page; `pnpm dev` (mode=`development`) includes it for BE-8-4 spike testing.
+
+Post-fix verification: `grep -rE 'miltonPopupSpike|miltonRuntimeSpike' dist/ --include='*.js'` empty. `find dist -name '*spike*'` empty. `grep -E 'spike-page' dist/manifest.json` empty.
+
+**AC11 / Task 1.2-1.4 — verify-production-bundle.sh CI guardrail (DONE)**
+
+Wrote `scripts/verify-production-bundle.sh` (3 precise leak checks: find spike-named files, grep .js for spike-trigger symbols, grep manifest.json for spike-page refs). Wired as a CI step "Verify production bundle (no DEV-only hooks shipping)" in `.github/workflows/ci.yml` after the existing Build step. Regression-catch verified: temporarily inserted `window.miltonPopupSpike = async () => []` outside DEV gate in popup.ts → script exit 1 + leak surfaced → reverted via `git checkout -- src/popup/popup.ts` → script exit 0 + clean.
+
+**AC2 / Task 2 — version bump (DONE)**
+
+`package.json` `0.1.0` → `0.2.0`. `pnpm build` then `jq -r .version dist/manifest.json` confirms `0.2.0`. Separate commit `chore(BE-8-10): bump version to 0.2.0` will land at story-closeout commit-sequencing (CLAUDE.md commit discipline).
+
+**AC3 / Task 3.1 + 3.4 — PRIVACY.md draft + listing-fields URL entry (DONE)**
+
+Drafted `PRIVACY.md` at repo root: 5 sections per AC3 + AGPL plain-English summary per method-17 hardening + cross-references to permissions.md (kept in sync). Email contact line carries a `[TODO: Pierre to add support email]` placeholder so Pierre fills before submission. URL `https://demandrel.github.io/milton-browser-extension/PRIVACY` already entered into listing-fields.md Privacy & Compliance table.
+
+**Task 3.2 / 3.3 — PAUSED for Pierre.** GitHub Pages enablement is a Settings → Pages click in the GitHub web UI; can't be automated by the dev-story workflow.
+
+**AC4 / Task 4.1-4.3 + 4.7 — store-listing copy (DONE)**
+
+- `store-assets/cws/description-short.txt`: 117 chars (under 132 cap). First sentence is Milton-desktop dependency per AC9 ordering rule.
+- `store-assets/cws/description-long.md`: 4,037 chars (under 16,384 cap). Honest beta framing using Pierre's 2026-05-19 corrected positive narrative ("if you can read it, Milton can capture it"); Milton-desktop dependency in the first paragraph; AGPL repo + privacy policy + GitHub Issues support links.
+- `store-assets/cws/listing-fields.md`: markdown-table format per method-17 hardening. Maps every CWS form field to source file + notes. Includes post-submit capture template for timestamp + listing-ID.
+
+**Task 4.4 / 4.5 / 4.6 — PAUSED for Pierre.** Screenshots + promo tile (+ optional marquee) are visual asset creation; Pierre captures these manually with Milton-desktop running.
+
+**AC5 / Task 5 — permissions.md (DONE)**
+
+Wrote `store-assets/cws/permissions.md` with single-purpose statement + per-permission justification (5 permissions) + per-host-permission justification (4 entries) + the remote-code disclosure section per AC5's critical requirement. Disclosure section cites Zotero Connector (chrome.com/.../ekhagklcjbdpajgpjgmbionohlpdbjgc) as the published precedent, references our two-layer verification chain (Ed25519 manifest sig + per-translator SHA-256) with line-anchored GitHub links to translator-fetcher.ts code paths, and explains the restricted execution context (sandbox.pages CSP scope). All `manifest.config.ts` permissions + host_permissions covered (drift-checked).
+
+**Task 6 — PAUSED for Pierre.** $5 CWS developer-account registration + 2FA setup is org-account / Google Workspace operational work. `store-assets/cws/account.md` stub created with TODO placeholders for the Demandrel-owned email + registration date + 2FA method.
+
+**AC7.1 + 7.2 / Task 7.1 + 7.2 — automated gates (DONE)**
+
+`pnpm typecheck && pnpm test && pnpm build && bash scripts/verify-production-bundle.sh` all clean. 407/407 tests pass. `.gitignore` updated with `milton-extension-v*.zip` per method-17 hardening (build artifact must not commit).
+
+**Task 7.3-7.6, 8 — PAUSED for Pierre.** Fresh-profile sideload + smoke matrix + IPC-boundary grep + chrome://extensions screenshot are Pierre's local-Chrome workflow. Submission (Task 8) requires Pierre's clicks in the CWS dashboard.
+
+**AC10 / Task 9 — Charter v2 alignment (DONE)**
+
+Edited Decision 9 row in `_bmad-output/planning-artifacts/charter-v2.md` line 52 to append the BE-8-10 clarification while preserving the existing "Sideload-first (.crx)" prefix.
+
+**Gate suite final state**
+- `pnpm typecheck` ✓
+- `pnpm test` ✓ 407/407
+- `pnpm build` ✓
+- `bash scripts/verify-production-bundle.sh` ✓ (production clean)
+- IPC-boundary grep ✓ (deferred to Pierre execution at Task 7.5; pattern unchanged from BE-8-9)
 
 ### File List
 
-_(populated by dev-story)_
+**New files (Claude-authored):**
+- `PRIVACY.md` — user-facing privacy policy at repo root; served via GitHub Pages once Pierre enables it (Task 3.2)
+- `scripts/verify-production-bundle.sh` — CI guardrail script (executable; chmod +x applied)
+- `store-assets/cws/description-short.txt` — CWS short description (117 chars)
+- `store-assets/cws/description-long.md` — CWS long description (4,037 chars)
+- `store-assets/cws/permissions.md` — per-permission CWS justifications + remote-code disclosure
+- `store-assets/cws/listing-fields.md` — form-field → source-file map
+- `store-assets/cws/account.md` — Demandrel account ownership stub (TODOs for Pierre to fill)
+- `store-assets/cws/screenshots/` (directory; Pierre populates with PNG screenshots)
+
+**Modified files:**
+- `package.json` — version `0.1.0` → `0.2.0`
+- `manifest.config.ts` — _unchanged this story; permissions / background already correct from BE-8-9_
+- `src/translator-runtime/sandbox.ts` — wrapped `wireSpikeTrigger()` call in `if (import.meta.env.DEV)` gate (Method-17 fix)
+- `vite.config.ts` — function-form `defineConfig(({mode}) => ...)`; `spike-page` input conditional on `mode !== 'production'`
+- `.github/workflows/ci.yml` — added "Verify production bundle (no DEV-only hooks shipping)" step after Build
+- `.gitignore` — added `milton-extension-v*.zip`
+- `_bmad-output/planning-artifacts/charter-v2.md` — Decision 9 row appended with BE-8-10 alignment note
+
+**Pending Pierre-execution artifacts (NOT YET CREATED):**
+- `store-assets/cws/screenshots/*.png` — 3-5 screenshots
+- `store-assets/cws/promo-tile.png` — 440×280
+- `store-assets/cws/marquee.png` — optional, 1400×560
+- `store-assets/cws/submission-preview-screenshot.png` — captured at Task 8.5
+- `milton-extension-v0.2.0.zip` — built + zipped at Task 7.2, uploaded at Task 8.2 (gitignored; ephemeral artifact)
 
 ## Change Log
 
@@ -327,3 +408,4 @@ _(populated by dev-story)_
 | 2026-05-19 | Claude (Opus 4.7 1M, BMad SM workflow create-story, Pierre-customized flow) | Initial draft. Story scope: closes Charter v2 Decision 9's "Web Store distribution is a separate epic post-stabilization" by repurposing BE-8 slot 10 for CWS publication. Pierre 2026-05-19 pre-draft batch decisions: (a) public-from-day-1 (overrode Unlisted recommendation; trades support burden for real-user data); (b) Demandrel org account ownership (transfer-safe; matches AGPL repo); (c) DoD = "submitted for review" (reviewer cycles handled as Review Follow-ups AI); (d) PRIVACY.md via GitHub Pages (same-domain governance as code); (e) version 0.2.0 (minor bump from 0.1.0; preserves 1.0 headroom); (f) ship without waiting for partner's anti-captcha (memory `project-anti-captcha-coming`; → v0.3 follow-up). 14 AC + 11 tasks; ~60% Claude-executable + 40% Pierre-operational (account registration, screenshot capture, smoke, submission click). Method-17 hardening pass: see next Change Log row. |
 | 2026-05-19 | Pierre (post-draft architecture clarification) | Caught a misread of the capture architecture in the original draft. Class 2 (PDF) + Class 3 (HTML) both run **client-side using the user's tab session** — Cloudflare/Anubis bot-protection isn't a concern in the common capture flow because the user has already cleared the challenge by loading the page in their tab. The "bot-protected publishers" framing only applies to the rare Class 1 server-fallback path (`translate.milton.so` invoked when client translator returns 0 items). Edits applied to: (a) AC9 disclosure copy — positive framing "if you can read it, Milton can capture it"; (b) Dev Notes "Public-from-day-1 support burden" — narrowed to the fallback-path edge case; (c) AC7 smoke matrix — replaced "bot-protected fallback expected" scenario with a Class 2 PDF capture scenario (the actual common path); (d) Task 4.3 description-long.md guidance — explicit instruction to NOT frame the extension as limited on bot-protected sites. |
 | 2026-05-19 | Claude (Opus 4.7 1M, BMad SM workflow auto-method-17) | Red Team vs Blue Team elicitation applied automatically per Pierre-customized default flow. 9 hardening edits applied across AC/Task/Dev-Notes sections. Red-team attack summary: (1) **AC1 confirmed bug** — `sandbox.ts:402` calls `wireSpikeTrigger()` UNCONDITIONALLY; `window.miltonRuntimeSpike` ships in production today. AC1 narrative + new Task 1.0 added to fix BEFORE writing the verify-script. (2) AC1 spike-page coverage tightened — also grep `dist/manifest.json` + `find dist -name '*spike*'`. (3) AC3 GitHub Pages provisioning latency corrected (up to 10min, not 30-60s) + retry policy specified. (4) AC3 PRIVACY URL content-validation gate (200-but-default-404-body trap). (5) AC3 PRIVACY.md AGPL plain-English summary added (users bounce off raw COPYING). (6) AC4 copy timebox (≤2h on description-long.md; polish is free post-launch). (7) AC4.7 listing-fields.md format prescribed as markdown table. (8) AC7 smoke abort criterion — if ANY scenario fails, story PAUSES; do not submit a known-broken v0.2 to CWS. (9) AC7 BE-8-9 Review Follow-ups out-of-scope disclaimer. (10) AC8 reviewer-rejection scope cut-line (post-submit feedback = Follow-up; upload-time failure = in-story abort+fix). (11) AC9 disclosure ordering — Milton-desktop dependency MUST be the first sentence (CWS search-result preview truncation). (12) Project Structure + Task 7.2 `.gitignore` add for the build-artifact .zip. Story still ready-for-dev pending Pierre's step 8 validation. |
+| 2026-05-19 | Claude (Opus 4.7 1M, BMad SM workflow dev-story) | **Claude-executable subset complete (~60% of story).** Tasks done: 1 (production hardening — sandbox.ts DEV gate + vite.config.ts spike-page conditional + verify-production-bundle.sh + CI step + regression-catch verified), 2 (version 0.1.0 → 0.2.0), 3.1+3.4 (PRIVACY.md + listing-fields URL entry), 4.1-4.3+4.7 (CWS copy + listing-fields.md table), 5 (permissions.md with remote-code disclosure citing Zotero Connector precedent + Ed25519/SHA-256 verification line-anchored), 7.1+7.2 (gate suite + .gitignore), 9 (Charter v2 Decision 9 alignment note). Method-17 caught a real production leak: `sandbox.ts:402` shipped `window.miltonRuntimeSpike` in every prior build; fixed before writing the verify script. ALSO caught `vite.config.ts` rollupOptions.input shipping the entire spike-page.html + spike-page.ts to production. Gate state: typecheck ✓ · 407/407 tests ✓ · build ✓ · verify-production-bundle.sh ✓ (production clean). **PAUSED for Pierre-execution tasks (Tasks 3.2/3.3 Pages enable + verify, 4.4/4.5/4.6 visual assets, 6 CWS account registration, 7.3-7.6 fresh-profile smoke, 8 submission). Story status remains `in-progress` (NOT flipped to `review`) because Pierre-execution work is required before AC8 submission gates the story closed.** |
