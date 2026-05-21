@@ -153,10 +153,10 @@ Unblocks: real-user usage data; partner's anti-captcha integration (will land as
   - [x] 2.2 `pnpm build` then `jq -r .version dist/manifest.json` → `0.2.0`. Confirmed.
   - [ ] 2.3 Separate `chore(BE-8-10): bump version to 0.2.0` commit will land at story-closeout time (CLAUDE.md commit discipline — bundling into a coherent commit sequence at the end rather than mid-flight).
 
-- [~] **Task 3 — PRIVACY.md + GitHub Pages** (AC: #3) — _partial; awaits Pierre Pages enablement_
+- [x] **Task 3 — PRIVACY.md + GitHub Pages** (AC: #3)
   - [x] 3.1 Drafted `PRIVACY.md` at repo root. 5 sections per AC3 + plain-English AGPL summary per method-17 hardening. All links checked. Support email finalized 2026-05-21: `support@milton.so`.
-  - [ ] 3.2 **(Pierre-execution)** Enable GitHub Pages on the repo: Settings → Pages → Source = `main` branch / root directory.
-  - [ ] 3.3 **(Pierre-execution)** Poll `curl -sI https://demandrel.github.io/milton-browser-extension/PRIVACY` every 30s up to 10 minutes; verify 200 + body contains "Privacy" (content-validation gate). Paste curl output + screenshot into Completion Notes.
+  - [x] 3.2 GitHub Pages enabled 2026-05-21 (Pierre) — Settings → Pages → Source = "Deploy from a branch", branch `main`, folder `/ (root)`, Enforce HTTPS on.
+  - [x] 3.3 Verified `https://demandrel.github.io/milton-browser-extension/PRIVACY` → HTTP 200, `content-type: text/html`, fully rendered (Jekyll v3.10.0). Body contains "Privacy Policy" / "Milton browser extension" / "support@milton.so"; no "Site not found" default-page; control nonsense path correctly 404s; CSS asset hash matches merge commit `c53cb41`.
   - [x] 3.4 Added URL `https://demandrel.github.io/milton-browser-extension/PRIVACY` to `store-assets/cws/listing-fields.md` (Privacy & Compliance table).
 
 - [x] **Task 4 — Store-listing copy + assets** (AC: #4, #9)
@@ -340,7 +340,7 @@ Wrote `scripts/verify-production-bundle.sh` (3 precise leak checks: find spike-n
 
 Drafted `PRIVACY.md` at repo root: 5 sections per AC3 + AGPL plain-English summary per method-17 hardening + cross-references to permissions.md (kept in sync). Support email finalized 2026-05-21 as `support@milton.so` (Contact section). URL `https://demandrel.github.io/milton-browser-extension/PRIVACY` already entered into listing-fields.md Privacy & Compliance table.
 
-**Task 3.2 / 3.3 — PAUSED for Pierre.** GitHub Pages enablement is a Settings → Pages click in the GitHub web UI; can't be automated by the dev-story workflow.
+**Task 3.2 / 3.3 — DONE 2026-05-21 (Phase B).** Pierre enabled GitHub Pages (Source: deploy-from-branch `main` / root, Enforce HTTPS on). Verified live: `https://demandrel.github.io/milton-browser-extension/PRIVACY` → HTTP 200, `text/html`, fully rendered by Jekyll 3.10.0; body carries the policy content; default-404-body trap not triggered; control path 404s correctly. This is the privacy-policy URL for the CWS form (AC8 / Task 8.3).
 
 **AC4 / Task 4.1-4.3 + 4.7 — store-listing copy (DONE)**
 
