@@ -1,6 +1,6 @@
 # Story BE-8.10: Chrome Web Store publication — v0.2 public launch
 
-Status: in-progress
+Status: done
 
 <!-- BMad SM workflow create-story output. Pierre-customized flow: full draft + auto-method-17 hardening + single validation prompt. Method-17 pass: see Change Log. -->
 
@@ -152,7 +152,7 @@ Unblocks: real-user usage data; partner's anti-captcha integration (will land as
 - [x] **Task 2 — Version bump to 0.2.0** (AC: #2)
   - [x] 2.1 Edited `package.json`: `"version": "0.1.0"` → `"version": "0.2.0"`.
   - [x] 2.2 `pnpm build` then `jq -r .version dist/manifest.json` → `0.2.0`. Confirmed.
-  - [ ] 2.3 Separate `chore(BE-8-10): bump version to 0.2.0` commit will land at story-closeout time (CLAUDE.md commit discipline — bundling into a coherent commit sequence at the end rather than mid-flight).
+  - [x] 2.3 Version bump landed as its own atomic commit `bddd099` — `chore(BE-8-10): bump version to 0.2.0`.
 
 - [x] **Task 3 — PRIVACY.md + GitHub Pages** (AC: #3)
   - [x] 3.1 Drafted `PRIVACY.md` at repo root. 5 sections per AC3 + plain-English AGPL summary per method-17 hardening. All links checked. Support email finalized 2026-05-21: `support@milton.so`.
@@ -188,28 +188,28 @@ Unblocks: real-user usage data; partner's anti-captcha integration (will land as
   - [x] 7.5 IPC-boundary grep (AC13): `grep -rEn "(milton/src-tauri|@milton-saas|src-tauri/)" src` → zero hits. Clean.
   - [~] 7.6 chrome://extensions Details permission screenshot (AC12 S2) — waived per Pierre 2026-05-21; permissions.md ↔ manifest.config.ts drift already verified in the BE-8-10 code-review (PR #11).
 
-- [ ] **Task 8 — Submit to CWS** (AC: #8)  **— Pierre-execution; story closes at this step's completion (DoD per pre-draft batch).**
-  - [ ] 8.1 (Pierre) Sign in to CWS dashboard with the Demandrel account.
-  - [ ] 8.2 (Pierre) Upload `milton-extension-v0.2.0.zip`.
-  - [ ] 8.3 (Pierre) Fill listing form from `store-assets/cws/listing-fields.md`. Category = Productivity. Visibility = **Public**. Privacy policy URL = the GitHub Pages PRIVACY URL.
-  - [ ] 8.4 (Pierre) Fill the Privacy practices form by pasting from `store-assets/cws/permissions.md`.
-  - [ ] 8.5 (Pierre) Take a screenshot of the submission preview page BEFORE clicking Submit. Save to `store-assets/cws/submission-preview-screenshot.png` for posterity.
-  - [ ] 8.6 (Pierre) Click Submit. Capture: submission timestamp (UTC, ISO 8601), reviewer-assigned-listing-ID, listing-status-at-submit. Paste into Completion Notes.
+- [x] **Task 8 — Submit to CWS** (AC: #8) — story DoD; **submitted 2026-05-21**.
+  - [x] 8.1 Signed in to the CWS dashboard with the registered account (`pierre.jacquel@gmail.com`, publisher "Milton").
+  - [x] 8.2 Uploaded `milton-extension-v0.2.0.zip` — CWS parsed the manifest and created the draft item.
+  - [x] 8.3 Filled the Store-listing form — title, summary, description (CWS-plain-text adaptation of `description-long.md`), category Productivity, 3 screenshots, promo tile, support + homepage URLs, privacy-policy URL (the GitHub Pages PRIVACY URL), visibility Public.
+  - [x] 8.4 Filled the Privacy-practices form — single-purpose, per-permission justifications, combined host-permission justification, remote-code disclosure (all adapted to CWS ≤1000-char-per-field limits); reviewer test instructions (≤500 chars) + test account.
+  - [~] 8.5 Submission-preview screenshot — not separately captured; the post-submit "envoyée pour examen" confirmation is the submission evidence. Non-blocking (posterity-only item).
+  - [x] 8.6 Submitted 2026-05-21 — CWS confirmed "Votre extension a été envoyée pour examen" (sent for review). Status: Pending review. Item ID recorded in `account.md`.
 
 - [x] **Task 9 — Charter v2 alignment note** (AC: #10)
   - [x] 9.1 Edited `_bmad-output/planning-artifacts/charter-v2.md` Decision 9 row (line 52). Appended the BE-8-10 clarification preserving existing "Sideload-first (.crx)" prefix.
 
-- [ ] **Task 10 — Pre-review self-check + cleanup** (AC: #14)
-  - [ ] 10.1 Walk the AC14 checklist line by line; tick each item.
-  - [ ] 10.2 `pnpm typecheck && pnpm test && pnpm build && bash scripts/verify-production-bundle.sh` — all clean from a fresh checkout (simulate CI).
-  - [ ] 10.3 Verify the .zip + the dashboard submission state matches `listing-fields.md` field-by-field.
+- [x] **Task 10 — Pre-review self-check + cleanup** (AC: #14)
+  - [x] 10.1 AC14 checklist walked — see the Pre-Review Self-Check section below (story-specific items ticked).
+  - [x] 10.2 Gate suite clean: `pnpm typecheck && pnpm test && pnpm build && bash scripts/verify-production-bundle.sh` — 407/407 tests, production bundle clean. Green locally (Phases A + D) and on CI (PR #11 + post-merge `main`).
+  - [x] 10.3 Upload artifact cross-checked field-by-field against `listing-fields.md` during the Phase E form-fill.
 
-- [ ] **Task 11 — Story closeout** (Pierre-customized flow per memory `[[feedback-code-review-required-before-done]]`)
-  - [ ] 11.1 PR opens as non-draft (CLAUDE.md Rule 3); body includes the AC checklist + smoke evidence from Task 7.
-  - [ ] 11.2 Background-watch CI per CLAUDE.md Rule 7 (`gh run watch <id> --exit-status` in background bash, NOT polled).
-  - [ ] 11.3 `/bmad_bmm_code-review` on the OPEN PR (memory `feedback-code-review-required-before-done`); fix HIGH findings; re-watch CI.
-  - [ ] 11.4 After PR-side green + code-review green, merge; background-watch post-merge main CI.
-  - [ ] 11.5 Post-merge: `chore(BE-8-10): mark done` on `main`.
+- [x] **Task 11 — Story closeout** (Pierre-customized flow per memory `[[feedback-code-review-required-before-done]]`)
+  - [x] 11.1 PR #11 opened non-draft (CLAUDE.md Rule 3). Merge-first sequencing: the code+docs PR was opened, reviewed and merged BEFORE the operational submission, so the submitted `.zip` builds from reviewed `main`.
+  - [x] 11.2 CI background-watched per CLAUDE.md Rule 7 — PR CI green, fix-commit CI green, post-merge `main` CI green.
+  - [x] 11.3 `/bmad_bmm_code-review` run on PR #11 — 0 HIGH / 2 MEDIUM / 5 LOW; M2 + L1-L5 auto-fixed, M1 resolved by Pierre (see Change Log).
+  - [x] 11.4 PR #11 squash-merged to `main` (`c53cb41`); post-merge `main` CI green.
+  - [x] 11.5 `chore(BE-8-10): mark done` on `main` — this closeout commit.
 
 ## Dev Notes
 
@@ -285,7 +285,7 @@ Unblocks: real-user usage data; partner's anti-captcha integration (will land as
 <!-- Before requesting code review, verify each item and check the box. -->
 
 - [x] Icon variants verified against Figma — **N/A this story; no UI changes**
-- [ ] File list in story matches actual files changed
+- [x] File list in story matches actual files changed
 - [x] No raw hex color values — all colors use PandaCSS tokens — **N/A; no CSS changes**
 - [x] `$effect` dependencies checked against async boundaries — **N/A; vanilla TS, no Svelte**
 - [x] Superforms tests use real adapter — **N/A; no Superforms**
@@ -294,14 +294,14 @@ Unblocks: real-user usage data; partner's anti-captcha integration (will land as
 - [x] Error paths handled — all async operations have try/catch or .catch() — **N/A this story; ops + docs**
 - [x] IPC command results checked — **N/A**
 - [x] Loading states span full async lifecycle — **N/A; no UI changes**
-- [ ] **Story-specific:** `dist/manifest.json` version is `0.2.0` (AC2 verify)
-- [ ] **Story-specific:** `dist/` grep for `miltonPopupSpike|miltonRuntimeSpike|spike-page` returns zero (AC1)
-- [ ] **Story-specific:** PRIVACY URL `https://demandrel.github.io/milton-browser-extension/PRIVACY` responds 200 + renders correctly (AC3 verify)
-- [ ] **Story-specific:** GitHub Pages enabled in repo settings (AC3 verify — manual screenshot of Settings → Pages into Completion Notes)
-- [ ] **Story-specific:** `store-assets/cws/` directory complete with all 6 required files + screenshots/ + promo-tile (AC4 cross-check)
-- [ ] **Story-specific:** Fresh-profile smoke (S1/S2 from AC12) executed; evidence in Completion Notes
-- [ ] **Story-specific:** Submission preview screenshot captured BEFORE clicking Submit (AC8 step 8.5)
-- [ ] **Story-specific:** Submission timestamp + listing-ID + status captured in Completion Notes (AC8 step 8.6)
+- [x] **Story-specific:** `dist/manifest.json` version is `0.2.0` (AC2 verify)
+- [x] **Story-specific:** `dist/` grep for `miltonPopupSpike|miltonRuntimeSpike|spike-page` returns zero (AC1) — verified by `verify-production-bundle.sh`, green on CI
+- [x] **Story-specific:** PRIVACY URL `https://demandrel.github.io/milton-browser-extension/PRIVACY` responds 200 + renders correctly (AC3 verify)
+- [x] **Story-specific:** GitHub Pages enabled in repo settings (AC3 verify)
+- [x] **Story-specific:** `store-assets/cws/` directory complete with all 6 required files + screenshots/ + promo-tile (AC4 cross-check)
+- [x] **Story-specific:** Pre-submission smoke executed — production build + arXiv Class-3 capture (AC7/AC12; compressed per Pierre, see AC7 note)
+- [~] **Story-specific:** Submission preview screenshot — not separately captured (see Task 8.5; non-blocking posterity item)
+- [x] **Story-specific:** Submission timestamp + status captured in Completion Notes (AC8 step 8.6); item ID in `account.md`
 
 ## Dev Agent Record
 
@@ -315,7 +315,7 @@ _None — no debug logs needed. Happy-path execution for the Claude-executable s
 
 ### Completion Notes List
 
-**Claude-executable subset complete; Pierre-execution tasks pending.** Story is at ~60% of total task surface; the remaining 40% is operational (CWS account registration, screenshot capture, fresh-profile smoke, submission click). Per the story's own framing in Project Structure Notes ("~60% Claude-executable + 40% Pierre-operational"), dev-story PAUSES here for Pierre to execute Tasks 3.2/3.3, 4.4/4.5/(4.6), 6, 7.3-7.6, 8.
+**STORY COMPLETE — Milton v0.2.0 submitted to the Chrome Web Store 2026-05-21.** All 14 ACs satisfied (with documented conscious resolutions: AC4 screenshot coverage, AC6 account ownership, AC7 smoke compression — see the AC notes + Change Log). All 11 tasks done. The story's DoD ("submitted for review", per the 2026-05-19 pre-draft batch) is met — CWS confirmed "envoyée pour examen". Reviewer-cycle feedback, if any, is OUT OF SCOPE per AC8 and tracked separately as Review Follow-ups.
 
 **AC1 / Task 1 — production-build hardening (DONE)**
 
@@ -361,7 +361,7 @@ Wrote `store-assets/cws/permissions.md` with single-purpose statement + per-perm
 
 `pnpm typecheck && pnpm test && pnpm build && bash scripts/verify-production-bundle.sh` all clean. 407/407 tests pass. `.gitignore` updated with `milton-extension-v*.zip` per method-17 hardening (build artifact must not commit).
 
-**Task 7.3-7.6 — DONE 2026-05-21 (Phase D).** Built `milton-extension-v0.2.0.zip`; unpacked the exact upload bytes to `/tmp/milton-smoke-unpacked` and Load-unpacked in Chrome — card clean (Milton v0.2.0, no Errors). Quick production-build smoke: arXiv Class-3 capture succeeded (popup + metadata preview + Save; reference reached Milton-desktop). IPC-boundary grep clean (AC13). Full 3-scenario matrix + fresh-isolated-profile + AC12 S2 screenshot consciously compressed per Pierre — rationale in the AC7 smoke-compression note. **Task 8 (submission) — PAUSED for Pierre's CWS dashboard clicks.**
+**Task 7.3-7.6 — DONE 2026-05-21 (Phase D).** Built `milton-extension-v0.2.0.zip`; unpacked the exact upload bytes to `/tmp/milton-smoke-unpacked` and Load-unpacked in Chrome — card clean (Milton v0.2.0, no Errors). Quick production-build smoke: arXiv Class-3 capture succeeded (popup + metadata preview + Save; reference reached Milton-desktop). IPC-boundary grep clean (AC13). Full 3-scenario matrix + fresh-isolated-profile + AC12 S2 screenshot consciously compressed per Pierre — rationale in the AC7 smoke-compression note. **Task 8 / Phase E — submission DONE 2026-05-21.** Pierre uploaded `milton-extension-v0.2.0.zip`, filled the Store-listing form (title, summary, description, Productivity category, 3 screenshots, promo tile, support + privacy URLs, Public visibility) and the Privacy-practices form (per-permission + host-permission justifications + remote-code disclosure adapted to CWS field limits; reviewer test instructions ≤500 chars + a test account). CWS accepted the submission — confirmation "Votre extension a été envoyée pour examen", status Pending review. The Task 8.5 submission-preview screenshot was not separately captured; the post-submit confirmation is the evidence.
 
 **AC10 / Task 9 — Charter v2 alignment (DONE)**
 
@@ -383,7 +383,7 @@ Edited Decision 9 row in `_bmad-output/planning-artifacts/charter-v2.md` line 52
 - `store-assets/cws/description-long.md` — CWS long description (4,037 chars)
 - `store-assets/cws/permissions.md` — per-permission CWS justifications + remote-code disclosure
 - `store-assets/cws/listing-fields.md` — form-field → source-file map
-- `store-assets/cws/account.md` — Demandrel account ownership stub (TODOs for Pierre to fill)
+- `store-assets/cws/account.md` — CWS developer-account provenance (account, publisher "Milton", AC6-override rationale)
 - `store-assets/cws/screenshots/` (directory; Pierre populates with PNG screenshots)
 
 **Modified files:**
@@ -417,3 +417,4 @@ _`manifest.config.ts` is **not** modified by this story — its permissions / ba
 | 2026-05-21 | Pierre + Claude (Opus 4.7 1M, BMad Master) | Release sequencing Phase A: 3rd screenshot (`Screen BE 3.png`) committed (3×1280×800); `PRIVACY.md` support email finalized (`support@milton.so`); story checkboxes synced (Task 4 done; marquee skipped). Opened PR #11 → CI green. |
 | 2026-05-21 | Claude (Opus 4.7 1M, BMad `code-review` workflow) | Adversarial code-review of PR #11: 0 HIGH / 2 MEDIUM / 5 LOW. **M1** (AC4 screenshot coverage — scenario iv translator-fallback absent) resolved by Pierre — 3 screenshots stand for v0.2, (iv) deferred to a post-launch listing update. **M2 + L1-L5 auto-fixed:** `PRIVACY.md` `storage` description synced with `permissions.md` + "Last updated" date → 2026-05-21; `permissions.md` `manifest.config.ts` citation 69-72 → 70-72; story File List corrected (added `sprint-status.yaml`, removed unchanged `manifest.config.ts` from Modified files); `verify-production-bundle.sh` symbol grep extended to `*.html`. Story stays `in-progress` — operational Tasks 6/7/8 (CWS account, fresh-profile smoke, submission) pending. |
 | 2026-05-21 | Pierre + Claude (Opus 4.7 1M, BMad Master) | Operational Phases B-D. **B** — GitHub Pages enabled, `https://demandrel.github.io/milton-browser-extension/PRIVACY` verified live (HTTP 200, rendered). **C** — CWS developer account registered under `pierre.jacquel@gmail.com` ($5 paid, 2FA on, publisher display name "Milton", non-commercial use); AC6 "Demandrel-owned account" requirement consciously overridden to a personal account (recorded in `account.md` + AC6; v0.3 item-transfer follow-up noted). **D** — built `milton-extension-v0.2.0.zip`; quick production-build smoke passed (arXiv Class-3 capture OK, zero errors); IPC-boundary grep clean (AC13); full smoke matrix + AC12 S2 consciously compressed per Pierre (AC7 note). Tasks 3/6/7 done. Next: Phase E — CWS submission (Task 8). |
+| 2026-05-21 | Pierre + Claude (Opus 4.7 1M, BMad Master) | **Phase E — submitted; STORY DONE.** Milton v0.2.0 uploaded to the Chrome Web Store and submitted for review (CWS confirmed "envoyée pour examen", status Pending review). Store-listing copy adapted from `description-long.md` to CWS plain text; Privacy-practices justifications adapted from `permissions.md` to CWS per-field limits (≤1000 ch/field, one combined host field, ≤500-char reviewer test instructions). DoD ("submitted for review") met → Status → `done`; sprint-status BE-8-10 → done. All 14 AC + 11 tasks complete. Reviewer-cycle feedback is out of scope (Review Follow-ups). |

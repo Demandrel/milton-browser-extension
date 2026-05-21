@@ -282,6 +282,6 @@ development_status:
   # fetched + evaled in sandbox); mitigation = pre-written justification
   # citing Ed25519 + SHA-256 verification + Zotero Connector precedent.
   # Theme: distribution.
-  BE-8-10-chrome-web-store-publication: in-progress
+  BE-8-10-chrome-web-store-publication: done
 
   epic-be-8-retrospective: optional
