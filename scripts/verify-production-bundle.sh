@@ -34,8 +34,9 @@
 #
 # What this does NOT catch:
 #   - HTML comments mentioning "spike-page.ts" as historical context (e.g.,
-#     offscreen.html line 15). Those are informational; the checks below scope
-#     to *.js files + manifest.json so comments don't false-positive.
+#     offscreen.html). Check 2 greps *.js + *.html for the spike-trigger
+#     *symbols* (miltonPopupSpike / miltonRuntimeSpike) only — the string
+#     "spike-page" in a prose comment is not one of those, so no false-positive.
 #   - Symbols inside test files (we only scan dist/, never src/).
 #
 # Exit codes:
@@ -76,7 +77,7 @@ fi
 # ────────────────────────────────────────────────────────────────────────
 # Check 2: spike-trigger symbols in compiled JS = DEV gate regression
 # ────────────────────────────────────────────────────────────────────────
-spike_symbols=$(grep -rE 'miltonPopupSpike|miltonRuntimeSpike' dist/ --include='*.js' 2>/dev/null || true)
+spike_symbols=$(grep -rE 'miltonPopupSpike|miltonRuntimeSpike' dist/ --include='*.js' --include='*.html' 2>/dev/null || true)
 if [ -n "$spike_symbols" ]; then
   echo "❌ Production bundle exposes DEV-only spike-trigger symbols on window:"
   echo "$spike_symbols" | sed 's/^/  /'

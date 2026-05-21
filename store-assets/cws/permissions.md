@@ -72,7 +72,7 @@ A translator can only execute if BOTH layers pass: the manifest must be signed b
 
 ### Restricted execution context
 
-Translators are not executed in the extension's privileged service-worker or popup context. They are executed inside the declared sandbox page (`src/translator-runtime/sandbox.html`, declared in `manifest.config.ts:69-72`) which runs at opaque origin with `'unsafe-eval'` CSP scoped strictly to that page. The sandbox has no `chrome.*` API access and no direct network access; it communicates with the rest of the extension only via `postMessage`. A malicious translator (even if it somehow bypassed both verification layers) could not exfiltrate user data, access cookies, or make outbound network requests — its only capability is to parse the HTML it was given and return structured metadata fields.
+Translators are not executed in the extension's privileged service-worker or popup context. They are executed inside the declared sandbox page (`src/translator-runtime/sandbox.html`, declared in `manifest.config.ts:70-72`) which runs at opaque origin with `'unsafe-eval'` CSP scoped strictly to that page. The sandbox has no `chrome.*` API access and no direct network access; it communicates with the rest of the extension only via `postMessage`. A malicious translator (even if it somehow bypassed both verification layers) could not exfiltrate user data, access cookies, or make outbound network requests — its only capability is to parse the HTML it was given and return structured metadata fields.
 
 ### Why this model and not a static bundle
 

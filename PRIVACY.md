@@ -1,6 +1,6 @@
 # Privacy Policy — Milton browser extension
 
-_Last updated: 2026-05-19 (v0.2.0)_
+_Last updated: 2026-05-21 (v0.2.0)_
 
 This is the privacy policy for the **Milton browser extension** (Chromium MV3), published by Demandrel on the Chrome Web Store and at <https://github.com/Demandrel/milton-browser-extension>.
 
@@ -47,7 +47,7 @@ For each permission declared by the extension, here is what it's used for. The e
 
 - **`activeTab`** — grants the extension per-invocation access to the active tab when you click the Milton toolbar button. Combined with `scripting` below, this is how the extension reads the current page without needing broad host_permissions on every website.
 - **`alarms`** — schedules a 6-hour periodic check for translator updates, so bundled translators stay current with upstream publisher changes.
-- **`storage`** — caches the translator-mirror manifest + lazy-fetched translator scripts in your browser's local extension storage. Capped at ~50 entries with a 7-day TTL. No personal data is stored here.
+- **`storage`** — caches translator data in your browser's local extension storage: the translator-mirror manifest (short-lived, re-checked roughly hourly) and lazy-fetched translator scripts (kept to at most ~50, expiring after 7 days), plus the timestamp of the last update check. No personal data is stored here.
 - **`scripting`** — runs the extension's own code in the active tab's context (only when you've clicked the toolbar button) to read the rendered HTML for capture.
 - **`offscreen`** — creates a hidden, headless document inside the extension to host the translator runtime sandbox. The sandbox runs translator code and posts the result back to the popup. Required because the translator framework needs evaluation primitives that are only allowed inside a sandbox page.
 - **`host_permissions`** for `translate.milton.so`, `translators.milton.so`, `arxiv.org`, `export.arxiv.org` — see the third-party services table above.
