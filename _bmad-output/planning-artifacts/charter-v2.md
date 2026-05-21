@@ -49,7 +49,7 @@ brief; this table is the lookup index.
 | 6 | Translator update cadence | Bundled subset pinned at build |
 | 7 | In-app URL-paste failure UX | Explicit error + install/launch extension CTA |
 | 8 | BE-7 backwards compatibility | Coexist (`pdfUrl` survives; bytes-upload added on top) |
-| 9 | Distribution channel | Sideload-first (.crx) |
+| 9 | Distribution channel | Sideload-first (.crx). **BE-8-10 (2026-05-19) ships the v0.2 public CWS listing inside BE-8 rather than starting a separate publication epic.** Sideload-first remains the dogfood / dev default; CWS is the public release channel. Firefox + other-Chromium-store ports are still separate future epics. |
 | 10 | Manifest permissions | All-at-once at install (Zotero-Connector parity) |
 | **A** | **Extension repo structure** | **A1** — extension extracted to separate public repo [`Demandrel/milton-browser-extension`](https://github.com/Demandrel/milton-browser-extension) 2026-05-16 via BE-8-3 (force-pushed filter-repo'd history `d42e037` → `ad60d7e`). Unambiguous AGPL boundary; Milton-saas (parent) is private as of 2026-05-16 (the original charter wording "already public" was incorrect — drift caught + corrected during BE-8-3 execution). |
 
