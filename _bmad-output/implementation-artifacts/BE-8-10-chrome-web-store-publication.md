@@ -154,18 +154,18 @@ Unblocks: real-user usage data; partner's anti-captcha integration (will land as
   - [ ] 2.3 Separate `chore(BE-8-10): bump version to 0.2.0` commit will land at story-closeout time (CLAUDE.md commit discipline — bundling into a coherent commit sequence at the end rather than mid-flight).
 
 - [~] **Task 3 — PRIVACY.md + GitHub Pages** (AC: #3) — _partial; awaits Pierre Pages enablement_
-  - [x] 3.1 Drafted `PRIVACY.md` at repo root. 5 sections per AC3 + plain-English AGPL summary per method-17 hardening. All links checked.
+  - [x] 3.1 Drafted `PRIVACY.md` at repo root. 5 sections per AC3 + plain-English AGPL summary per method-17 hardening. All links checked. Support email finalized 2026-05-21: `support@milton.so`.
   - [ ] 3.2 **(Pierre-execution)** Enable GitHub Pages on the repo: Settings → Pages → Source = `main` branch / root directory.
   - [ ] 3.3 **(Pierre-execution)** Poll `curl -sI https://demandrel.github.io/milton-browser-extension/PRIVACY` every 30s up to 10 minutes; verify 200 + body contains "Privacy" (content-validation gate). Paste curl output + screenshot into Completion Notes.
   - [x] 3.4 Added URL `https://demandrel.github.io/milton-browser-extension/PRIVACY` to `store-assets/cws/listing-fields.md` (Privacy & Compliance table).
 
-- [~] **Task 4 — Store-listing copy + assets** (AC: #4, #9) — _partial; assets pending Pierre_
+- [x] **Task 4 — Store-listing copy + assets** (AC: #4, #9)
   - [x] 4.1 Created `store-assets/cws/` + `store-assets/cws/screenshots/` directories.
   - [x] 4.2 Drafted `description-short.txt` (117 chars; under 132 cap). First sentence is Milton-desktop dependency per AC9 ordering.
   - [x] 4.3 Drafted `description-long.md` (4,037 chars; under 16,384 cap). Honest beta framing; client-side capture positive framing per Pierre's 2026-05-19 correction; Milton-desktop dependency first; AGPL + repo + privacy + GitHub Issues support links.
-  - [ ] 4.4 **(Pierre-execution)** Capture screenshots (1280×800 PNG, 3-5 files in `store-assets/cws/screenshots/`).
-  - [ ] 4.5 **(Pierre-execution)** Create `promo-tile.png` (440×280).
-  - [ ] 4.6 **(Optional)** `marquee.png` (1400×560).
+  - [x] 4.4 Captured 3 screenshots (1280×800 PNG) in `store-assets/cws/screenshots/` — `Screen BE 1/2/3.png`. Meets AC4 "3-5 files" minimum.
+  - [x] 4.5 Created `promo-tile.png` (440×280, exact) in `store-assets/cws/`.
+  - [~] 4.6 **(Optional — SKIPPED)** `marquee.png` (1400×560) skipped per story Out-of-scope; addable in a v0.3 listing update.
   - [x] 4.7 Wrote `store-assets/cws/listing-fields.md` — markdown table format per method-17 hardening; maps every CWS form field to source file + notes.
 
 - [x] **Task 5 — Permission-justification doc** (AC: #5)
@@ -338,7 +338,7 @@ Wrote `scripts/verify-production-bundle.sh` (3 precise leak checks: find spike-n
 
 **AC3 / Task 3.1 + 3.4 — PRIVACY.md draft + listing-fields URL entry (DONE)**
 
-Drafted `PRIVACY.md` at repo root: 5 sections per AC3 + AGPL plain-English summary per method-17 hardening + cross-references to permissions.md (kept in sync). Email contact line carries a `[TODO: Pierre to add support email]` placeholder so Pierre fills before submission. URL `https://demandrel.github.io/milton-browser-extension/PRIVACY` already entered into listing-fields.md Privacy & Compliance table.
+Drafted `PRIVACY.md` at repo root: 5 sections per AC3 + AGPL plain-English summary per method-17 hardening + cross-references to permissions.md (kept in sync). Support email finalized 2026-05-21 as `support@milton.so` (Contact section). URL `https://demandrel.github.io/milton-browser-extension/PRIVACY` already entered into listing-fields.md Privacy & Compliance table.
 
 **Task 3.2 / 3.3 — PAUSED for Pierre.** GitHub Pages enablement is a Settings → Pages click in the GitHub web UI; can't be automated by the dev-story workflow.
 
@@ -348,7 +348,7 @@ Drafted `PRIVACY.md` at repo root: 5 sections per AC3 + AGPL plain-English summa
 - `store-assets/cws/description-long.md`: 4,037 chars (under 16,384 cap). Honest beta framing using Pierre's 2026-05-19 corrected positive narrative ("if you can read it, Milton can capture it"); Milton-desktop dependency in the first paragraph; AGPL repo + privacy policy + GitHub Issues support links.
 - `store-assets/cws/listing-fields.md`: markdown-table format per method-17 hardening. Maps every CWS form field to source file + notes. Includes post-submit capture template for timestamp + listing-ID.
 
-**Task 4.4 / 4.5 / 4.6 — PAUSED for Pierre.** Screenshots + promo tile (+ optional marquee) are visual asset creation; Pierre captures these manually with Milton-desktop running.
+**Task 4.4 / 4.5 — DONE (2026-05-20/21).** 3 screenshots (1280×800) + `promo-tile.png` (440×280) captured by Pierre and committed. **Task 4.6 marquee — SKIPPED** (optional; deferrable to a v0.3 listing update).
 
 **AC5 / Task 5 — permissions.md (DONE)**
 
@@ -394,10 +394,12 @@ Edited Decision 9 row in `_bmad-output/planning-artifacts/charter-v2.md` line 52
 - `.gitignore` — added `milton-extension-v*.zip`
 - `_bmad-output/planning-artifacts/charter-v2.md` — Decision 9 row appended with BE-8-10 alignment note
 
-**Pending Pierre-execution artifacts (NOT YET CREATED):**
-- `store-assets/cws/screenshots/*.png` — 3-5 screenshots
+**Pierre-created assets (committed):**
+- `store-assets/cws/screenshots/Screen BE 1.png`, `Screen BE 2.png`, `Screen BE 3.png` — 3 screenshots, 1280×800
 - `store-assets/cws/promo-tile.png` — 440×280
-- `store-assets/cws/marquee.png` — optional, 1400×560
+
+**Pending Pierre-execution artifacts (NOT YET CREATED):**
+- `store-assets/cws/marquee.png` — optional, 1400×560 (skipped for v0.2)
 - `store-assets/cws/submission-preview-screenshot.png` — captured at Task 8.5
 - `milton-extension-v0.2.0.zip` — built + zipped at Task 7.2, uploaded at Task 8.2 (gitignored; ephemeral artifact)
 
@@ -408,4 +410,5 @@ Edited Decision 9 row in `_bmad-output/planning-artifacts/charter-v2.md` line 52
 | 2026-05-19 | Claude (Opus 4.7 1M, BMad SM workflow create-story, Pierre-customized flow) | Initial draft. Story scope: closes Charter v2 Decision 9's "Web Store distribution is a separate epic post-stabilization" by repurposing BE-8 slot 10 for CWS publication. Pierre 2026-05-19 pre-draft batch decisions: (a) public-from-day-1 (overrode Unlisted recommendation; trades support burden for real-user data); (b) Demandrel org account ownership (transfer-safe; matches AGPL repo); (c) DoD = "submitted for review" (reviewer cycles handled as Review Follow-ups AI); (d) PRIVACY.md via GitHub Pages (same-domain governance as code); (e) version 0.2.0 (minor bump from 0.1.0; preserves 1.0 headroom); (f) ship without waiting for partner's anti-captcha (memory `project-anti-captcha-coming`; → v0.3 follow-up). 14 AC + 11 tasks; ~60% Claude-executable + 40% Pierre-operational (account registration, screenshot capture, smoke, submission click). Method-17 hardening pass: see next Change Log row. |
 | 2026-05-19 | Pierre (post-draft architecture clarification) | Caught a misread of the capture architecture in the original draft. Class 2 (PDF) + Class 3 (HTML) both run **client-side using the user's tab session** — Cloudflare/Anubis bot-protection isn't a concern in the common capture flow because the user has already cleared the challenge by loading the page in their tab. The "bot-protected publishers" framing only applies to the rare Class 1 server-fallback path (`translate.milton.so` invoked when client translator returns 0 items). Edits applied to: (a) AC9 disclosure copy — positive framing "if you can read it, Milton can capture it"; (b) Dev Notes "Public-from-day-1 support burden" — narrowed to the fallback-path edge case; (c) AC7 smoke matrix — replaced "bot-protected fallback expected" scenario with a Class 2 PDF capture scenario (the actual common path); (d) Task 4.3 description-long.md guidance — explicit instruction to NOT frame the extension as limited on bot-protected sites. |
 | 2026-05-19 | Claude (Opus 4.7 1M, BMad SM workflow auto-method-17) | Red Team vs Blue Team elicitation applied automatically per Pierre-customized default flow. 9 hardening edits applied across AC/Task/Dev-Notes sections. Red-team attack summary: (1) **AC1 confirmed bug** — `sandbox.ts:402` calls `wireSpikeTrigger()` UNCONDITIONALLY; `window.miltonRuntimeSpike` ships in production today. AC1 narrative + new Task 1.0 added to fix BEFORE writing the verify-script. (2) AC1 spike-page coverage tightened — also grep `dist/manifest.json` + `find dist -name '*spike*'`. (3) AC3 GitHub Pages provisioning latency corrected (up to 10min, not 30-60s) + retry policy specified. (4) AC3 PRIVACY URL content-validation gate (200-but-default-404-body trap). (5) AC3 PRIVACY.md AGPL plain-English summary added (users bounce off raw COPYING). (6) AC4 copy timebox (≤2h on description-long.md; polish is free post-launch). (7) AC4.7 listing-fields.md format prescribed as markdown table. (8) AC7 smoke abort criterion — if ANY scenario fails, story PAUSES; do not submit a known-broken v0.2 to CWS. (9) AC7 BE-8-9 Review Follow-ups out-of-scope disclaimer. (10) AC8 reviewer-rejection scope cut-line (post-submit feedback = Follow-up; upload-time failure = in-story abort+fix). (11) AC9 disclosure ordering — Milton-desktop dependency MUST be the first sentence (CWS search-result preview truncation). (12) Project Structure + Task 7.2 `.gitignore` add for the build-artifact .zip. Story still ready-for-dev pending Pierre's step 8 validation. |
+| 2026-05-21 | Pierre + Claude (Opus 4.7 1M, BMad Master operational guidance) | Release sequencing Phase A. 3rd screenshot captured (`Screen BE 3.png`) — 3×1280×800 now committed, meets AC4 minimum. `PRIVACY.md` support email finalized as `support@milton.so`. Story checkboxes synced: Task 4 done; Task 4.6 marquee skipped (optional). Next: open BE-8-10 PR → CI → `/bmad_bmm_code-review` → merge to `main`, then operational Phases B-E (GitHub Pages enablement, CWS account registration, fresh-profile smoke, submission). |
 | 2026-05-19 | Claude (Opus 4.7 1M, BMad SM workflow dev-story) | **Claude-executable subset complete (~60% of story).** Tasks done: 1 (production hardening — sandbox.ts DEV gate + vite.config.ts spike-page conditional + verify-production-bundle.sh + CI step + regression-catch verified), 2 (version 0.1.0 → 0.2.0), 3.1+3.4 (PRIVACY.md + listing-fields URL entry), 4.1-4.3+4.7 (CWS copy + listing-fields.md table), 5 (permissions.md with remote-code disclosure citing Zotero Connector precedent + Ed25519/SHA-256 verification line-anchored), 7.1+7.2 (gate suite + .gitignore), 9 (Charter v2 Decision 9 alignment note). Method-17 caught a real production leak: `sandbox.ts:402` shipped `window.miltonRuntimeSpike` in every prior build; fixed before writing the verify script. ALSO caught `vite.config.ts` rollupOptions.input shipping the entire spike-page.html + spike-page.ts to production. Gate state: typecheck ✓ · 407/407 tests ✓ · build ✓ · verify-production-bundle.sh ✓ (production clean). **PAUSED for Pierre-execution tasks (Tasks 3.2/3.3 Pages enable + verify, 4.4/4.5/4.6 visual assets, 6 CWS account registration, 7.3-7.6 fresh-profile smoke, 8 submission). Story status remains `in-progress` (NOT flipped to `review`) because Pierre-execution work is required before AC8 submission gates the story closed.** |

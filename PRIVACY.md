@@ -77,6 +77,6 @@ For the Chrome Web Store listing, every meaningful policy change is paired with 
 If you have a question, concern, or want to report a privacy issue:
 
 - **Preferred:** open an issue at <https://github.com/Demandrel/milton-browser-extension/issues> — visible to other users, fastest response, fits the open-source workflow.
-- **Email:** [TODO: Pierre to add support email before CWS submission, or remove this line if GitHub Issues is the sole channel.]
+- **Email:** <support@milton.so> — for questions you'd rather not raise in a public issue.
 
 We aim to respond within a reasonable time but make no enterprise-grade SLA commitments at this stage.
