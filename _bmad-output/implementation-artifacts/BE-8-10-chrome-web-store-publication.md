@@ -73,7 +73,7 @@ Unblocks: real-user usage data; partner's anti-captcha integration (will land as
     - `host_permissions: arxiv.org/* + export.arxiv.org/*` — BE-8-4 integration-spike target; actually used by the arXiv translator for fetching abs HTML.
     **Remote-code disclosure paragraph** (CRITICAL — the single biggest CWS review risk): explain that translator JS fetched from translators.milton.so is verified Ed25519 (manifest signature) + SHA-256 (per-translator) and executed only inside the sandbox-page CSP context. Cite Zotero Connector (extension ID `ekhagklcjbdpajgpjgmbionohlpdbjgc` — published on CWS using the identical model) as the precedent. Reference the verification code paths: `src/translator-runtime/translator-fetcher.ts:244-249` (manifest sig verify) and `src/translator-runtime/translator-fetcher.ts:354-359` (per-translator SHA verify).
 
-6. **Chrome Web Store developer account registered under Demandrel.** A Demandrel-org member registers as a CWS developer ($5 one-time fee, Demandrel-billed). 2FA enabled. Account email is org-owned (NOT a personal address; transfer-safe if Demandrel hires later). Document the owning account in `store-assets/cws/account.md` (no secrets — just which email owns the listing, why this account vs another, and the registration date so future stories know the provenance).
+6. **Chrome Web Store developer account registered under Demandrel.** A Demandrel-org member registers as a CWS developer ($5 one-time fee, Demandrel-billed). 2FA enabled. Account email is org-owned (NOT a personal address; transfer-safe if Demandrel hires later). Document the owning account in `store-assets/cws/account.md` (no secrets — just which email owns the listing, why this account vs another, and the registration date so future stories know the provenance). **Override 2026-05-21 (Pierre):** the "org-owned, not personal" requirement is consciously waived for v0.2 — the listing registers under `pierre.jacquel@gmail.com` (personal Gmail) for launch speed, with the **publisher display name set to "Milton"** (matching the product + extension name). Pierre accepts the trade-off (listing + locked extension ID bound to a personal account; future migration to a Demandrel-owned account would be a manual CWS item transfer). Rationale + v0.3 transfer note recorded in `account.md`.
 
 7. **End-to-end smoke on a fresh Chromium profile from the production .zip.**
     - `pnpm build` produces `dist/`.
@@ -174,10 +174,10 @@ Unblocks: real-user usage data; partner's anti-captcha integration (will land as
   - [x] 5.3 Drift-checked: all 5 permissions from manifest.config.ts:27-48 covered (`activeTab`, `alarms`, `storage`, `scripting`, `offscreen`). All 4 host_permissions from manifest.config.ts:55-66 covered (`translate.milton.so`, `translators.milton.so`, `arxiv.org`, `export.arxiv.org`).
   - [x] 5.4 PRIVACY.md ↔ permissions.md cross-check: PRIVACY.md section "(c) Permissions and their purposes" mirrors permissions.md per-permission descriptions; spot-checked `alarms` + `scripting` + `offscreen` for parity.
 
-- [ ] **Task 6 — CWS developer-account registration** (AC: #6)  **— Pierre-execution; dev-story PAUSES here for evidence.**
-  - [ ] 6.1 (Pierre) Demandrel org member signs up at https://chrome.google.com/webstore/devconsole; pays $5 one-time fee on Demandrel-billed card.
-  - [ ] 6.2 (Pierre) Enable 2FA on the developer Google account (Google Authenticator or hardware key).
-  - [ ] 6.3 Create `store-assets/cws/account.md` documenting: which Demandrel email owns the listing, registration date, 2FA method. No secrets (no passwords, no recovery codes).
+- [x] **Task 6 — CWS developer-account registration** (AC: #6)
+  - [x] 6.1 Registered as a CWS developer 2026-05-21 under `pierre.jacquel@gmail.com` (AC6 override — see `account.md`); $5 one-time fee paid; publisher created with display name "Milton"; use declaration = non-commercial.
+  - [x] 6.2 2-Step Verification confirmed enabled on the Google account (2026-05-21).
+  - [x] 6.3 `store-assets/cws/account.md` finalized: account email, publisher name, registration date, 2FA, $5-paid, AC6-override rationale. No secrets.
 
 - [~] **Task 7 — Build + fresh-profile smoke** (AC: #7, #12, #13) — _partial; awaits Pierre smoke_
   - [x] 7.1 `pnpm typecheck && pnpm test && pnpm build && bash scripts/verify-production-bundle.sh` all clean. 407/407 tests pass.
@@ -354,7 +354,7 @@ Drafted `PRIVACY.md` at repo root: 5 sections per AC3 + AGPL plain-English summa
 
 Wrote `store-assets/cws/permissions.md` with single-purpose statement + per-permission justification (5 permissions) + per-host-permission justification (4 entries) + the remote-code disclosure section per AC5's critical requirement. Disclosure section cites Zotero Connector (chrome.com/.../ekhagklcjbdpajgpjgmbionohlpdbjgc) as the published precedent, references our two-layer verification chain (Ed25519 manifest sig + per-translator SHA-256) with line-anchored GitHub links to translator-fetcher.ts code paths, and explains the restricted execution context (sandbox.pages CSP scope). All `manifest.config.ts` permissions + host_permissions covered (drift-checked).
 
-**Task 6 — PAUSED for Pierre.** $5 CWS developer-account registration + 2FA setup is org-account / Google Workspace operational work. `store-assets/cws/account.md` stub created with TODO placeholders for the Demandrel-owned email + registration date + 2FA method.
+**Task 6 — DONE 2026-05-21 (Phase C).** Registered as a CWS developer under `pierre.jacquel@gmail.com` ($5 paid, 2FA on). Publisher created with display name **"Milton"**; use declaration = non-commercial. **AC6 override:** the story specified a Demandrel-owned account; Pierre consciously chose a personal Gmail for launch speed ("Demandrel" is a pseudonymous handle, not a registered org — there is no Workspace to register under). Rationale + v0.3 item-transfer follow-up recorded in `account.md` + AC6.
 
 **AC7.1 + 7.2 / Task 7.1 + 7.2 — automated gates (DONE)**
 
