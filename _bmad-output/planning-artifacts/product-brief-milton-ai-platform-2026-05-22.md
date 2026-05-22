@@ -14,6 +14,8 @@ project: 'Milton AI Platform (Epic-21)'
 
 # Product Brief: Milton AI Platform (Epic-21)
 
+> **⚠ Correction note (added 2026-05-22, after the architecture workflow inspected the Milton-saas repo).** Three statements in this document were written on unverified assumptions and are **superseded**: (1) billing is **Polar**, not Stripe; (2) Milton **already has paid tiers** (`plan_tier` = free/monthly/yearly/lifetime/founder) — epic-21 is the AI *upgrade driver* for existing plans, not Milton's first paid tier; (3) AI metadata repair and usage metering are **not greenfield** — they evolve Milton's existing GROBID PDF-analysis and the `pdf_analysis_usage` quota. Full detail: the *Corrections to Upstream Documents* section of `architecture-milton-ai-platform-epic-21-2026-05-22.md`.
+
 ## Executive Summary
 
 Milton — a reference manager spanning a Tauri desktop app and a Chromium browser extension — has no AI. As of early 2026, AI is table stakes in this category: Mendeley, EndNote, ReadCube, and SciSpace all shipped chat-with-PDF, summarization, and library search. Epic-21 closes that gap and builds Milton's first paid tier.

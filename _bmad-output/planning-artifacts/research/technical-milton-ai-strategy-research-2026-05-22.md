@@ -21,6 +21,8 @@ source_verification: true
 **Author:** Pierre
 **Research Type:** technical
 
+> **⚠ Correction note (added 2026-05-22, after the architecture workflow inspected the Milton-saas repo).** This research surveyed **Stripe** for billing; the actual Milton stack uses **Polar** (a live `polar-webhook` Supabase edge function). The Stripe analysis below is retained as general reference, but **Polar is the billing platform**. Also: Milton already has paid tiers (`plan_tier`) and an existing usage-metering predecessor (`pdf_analysis_usage`) — see the *Corrections to Upstream Documents* section of `architecture-milton-ai-platform-epic-21-2026-05-22.md`.
+
 ---
 
 ## Research Overview

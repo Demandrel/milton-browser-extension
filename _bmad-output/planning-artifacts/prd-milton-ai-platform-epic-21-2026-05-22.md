@@ -29,6 +29,8 @@ date: 2026-05-22
 **Author:** Pierre
 **Date:** 2026-05-22
 
+> **⚠ Correction note (added 2026-05-22, after the architecture workflow inspected the Milton-saas repo).** Three statements in this document are **superseded**: (1) billing is **Polar**, not Stripe; (2) Milton **already has paid tiers** (`plan_tier` = free/monthly/yearly/lifetime/founder) — epic-21 consumes the existing tier system rather than introducing one; (3) AI metadata repair and usage metering are **not greenfield** — they evolve Milton's existing GROBID PDF-analysis and the `pdf_analysis_usage` quota. Full detail: the *Corrections to Upstream Documents* section of `architecture-milton-ai-platform-epic-21-2026-05-22.md`.
+
 > **Scope:** This PRD covers the **MVP = Phase 1 (AI Foundation)** of epic-21. Later phases (chat-with-PDF, monetization, multi-provider/BYOK/local, semantic search) appear as roadmap context only. Built on `product-brief-milton-ai-platform-2026-05-22.md` and `research/technical-milton-ai-strategy-research-2026-05-22.md`.
 >
 > **Classification:** brownfield · desktop_app + api_backend · domain general (research-productivity) · complexity medium (money-handling credit ledger + multi-provider LLM integration).
