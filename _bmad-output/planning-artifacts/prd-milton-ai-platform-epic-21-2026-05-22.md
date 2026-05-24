@@ -78,15 +78,15 @@ MVP (Phase 1) user success centres on **AI metadata repair** delivering a felt w
 
 ## User Journeys
 
-### Journey 1 — Maya cleans up a messy import *(primary success path)*
+### Journey 1 — Maya captures a paper, AI silently fills the gap *(primary success path)*
 
-Maya bulk-imports 60 references from an old EndNote export. Half have garbled titles, missing DOIs, "Anonymous" authors — she is *not* going to hand-fix 60 entries. She spots a **"Repair metadata with AI"** action; a banner shows she has free AI credits. She selects the messy references and runs it — a progress indicator, credits ticking down in human terms ("48 repairs left"). **Climax:** the references come back correct — titles, authors, DOIs, journals, years — each repaired field subtly marked so she can glance-verify. Her library is clean in under a minute; she trusts Milton's AI and wonders what else it can do.
-→ *Reveals:* bulk-select + repair action (desktop + extension), the gateway→extraction pipeline, structured-output field mapping, a credits surface, per-field "AI-repaired" marking, the free-tier grant.
+Maya is reading a paper on a journal site whose translator Milton doesn't yet have. She clicks the extension's capture button. The deterministic capture path (translator / DOI) runs first and returns incomplete metadata — "Anonymous" author, no DOI, garbled title. Because this is a PDF-capture context and the deterministic fallback didn't produce clean data, **AI metadata repair fires automatically**: the extension sends what it has to the gateway and gets back corrected title / authors / DOI / journal / year. **Climax:** the reference saves clean in one click — Maya didn't have to do anything special, AI just filled the gap. AI-repaired fields are subtly marked so she can glance-verify (and revert any if wrong); her free-credit count ticked down by one.
+→ *Reveals:* deterministic-first then AI-fallback decision logic in the extension capture path, gateway→extraction pipeline, structured-output field mapping, per-field "AI-repaired" marking, credits surface, the free-tier grant.
 
-### Journey 2 — Maya hits a limit and a low-confidence case *(edge case / recovery)*
+### Journey 2 — Maya hits a credit limit, and a low-confidence case *(edge case / recovery)*
 
-Weeks later, mid deadline-crunch, Maya runs repair on another big import. Partway through, her free monthly allocation runs out — the run **pauses, doesn't crash**: "You've used this month's free AI credits — they reset on [date]." (No Pro tier at MVP, so the message is honest — a reset date, not an upsell.) One reference is a preprint with almost no metadata — the AI returns **low confidence and flags it rather than guessing**. **Climax:** instead of silent wrong data, Maya sees exactly what happened — repaired, skipped, limit-reached. She finishes what she can, knows when credits return, and the flagged reference is left untouched.
-→ *Reveals:* graceful allocation-exhaustion (pause not fail), clear reset messaging, low-confidence handling (flag, never guess), partial-run reporting, estimate-then-settle (no mid-run overspend).
+Weeks later, mid deadline-crunch, Maya captures another paper. The extension calls the gateway; her free monthly allocation is exhausted — the gateway returns 402. The existing **`limit-reached-modal`** fires (the same one Milton already uses for the PDF-analysis quota): "You've used this month's free AI credits — they reset on [date]." (At MVP no Pro tier, so the message is honest — a reset date, not an upsell.) The reference still saves with whatever the deterministic path produced; Maya can refine it later via the info-panel "Improve metadata with AI" button once credits reset, or accept the partial metadata. Separately: when AI repair is applied to a preprint with almost no extractable data, it returns **low confidence and flags it rather than guessing** — no silent wrong data.
+→ *Reveals:* graceful 402 handling via the existing `limit-reached-modal` pattern, clear reset messaging, the info-panel button as the manual fallback, low-confidence flagging (flag, never guess), estimate-then-settle (no mid-call overspend).
 
 ### Journey 3 — Daniel, the power user, MVP-constrained
 
@@ -262,7 +262,7 @@ Cross-repo coordination (server in Milton-saas, client triggers here) via the Op
 
 ### AI Metadata Repair
 
-- **FR12:** A user can select one or more references and request AI metadata repair.
+- **FR12:** AI metadata repair is invoked (a) **automatically as a fallback** during PDF-ingestion paths (desktop PDF-create-from-scratch, desktop direct-PDF-URL in create-ref, extension capture with a PDF, Zotero import for refs with a PDF lacking author/title) **when deterministic capture (DOI / Crossref / translator) returned incomplete metadata**; (b) **manually** via an "Improve metadata with AI" button in the info panel of any reference. It is **never** invoked automatically on references without an associated PDF, nor on references already cleanly captured by deterministic methods.
 - **FR13:** The system returns repaired bibliographic fields (title, authors, DOI, year, journal, …) for each submitted reference.
 - **FR14:** The system marks which fields were AI-repaired, distinguishing them from original data.
 - **FR15:** The system reports a confidence level for each repaired reference.
@@ -294,6 +294,7 @@ Cross-repo coordination (server in Milton-saas, client triggers here) via the Op
 - **FR32:** The system enforces per-user rate limits on AI requests.
 - **FR33:** The system discloses, in the privacy policy, that AI features send data to a third-party LLM provider.
 - **FR34:** The product signposts that bring-your-own-key and local-model options are planned, without over-claiming current privacy.
+- **FR35:** A user can disable automatic AI metadata repair in settings (the manual info-panel button remains available). Default: on.
 
 ---
 

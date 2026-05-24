@@ -113,22 +113,31 @@ From the Architecture (technical requirements that shape stories):
 
 | FRs | Epic |
 |---|---|
-| FR1–6 (ledger), FR7–11 (gateway), FR12–19 (metadata repair), FR20–24 (credits UX), FR25–27 (auth), FR32 (rate limits) | Epic 1 |
-| FR28–31 (operator monitoring), FR33 (privacy disclosure), FR34 (BYOK/local signposting) | Epic 2 |
+| FR1–6 (ledger), FR7–11 (gateway), FR12–19 (metadata repair — fallback+manual trigger model), FR20–24 (credits UX), FR25–27 (auth), FR32 (rate limits), FR35 (auto-AI opt-out) | Epic 1 (MVP) |
+| FR28–31 (operator monitoring), FR33 (privacy disclosure), FR34 (BYOK/local signposting) | Epic 2 (MVP) |
+| *Phase 2 — chat-with-PDF + credit packs — has no MVP-PRD FRs (forward-looking); capabilities documented in story ACs and architecture §Phase 2.* | Epic 3, Epic 4 (Phase 2) |
 
-All 34 FRs mapped. Dependency: Epic 2 depends on Epic 1's ledger; Epic 1 is standalone.
+All 35 MVP-PRD FRs mapped to Phase-1 epics. Dependency: Epic 2 depends on Epic 1's ledger; Epic 1 is standalone. Phase-2 epics depend on Epic 1+2 being shipped.
 
 ## Epic List
 
-### Epic 1: AI Metadata Repair on a Metered Credit Foundation
+### Epic 1: AI Metadata Repair on a Metered Credit Foundation *(MVP — Phase 1)*
 
-A Milton user can repair the bad/missing metadata on their references with AI — select references, get corrected bibliographic fields back — metered transparently against a free monthly credit allocation, with clear visibility of their balance and usage. Standalone: delivers Milton's first AI feature end-to-end (credit ledger + gateway + repair + credits UX + auth), proving the metering pipeline.
-**FRs covered:** FR1–FR27, FR32
+Milton's first AI feature: AI metadata repair **fires automatically as a fallback** during PDF-ingestion paths (PDF create-from-scratch, direct-PDF-URL create, extension capture with a PDF, Zotero import with a PDF lacking author/title) **when deterministic capture (DOI / Crossref / translator) returned incomplete metadata**; or **manually** via an "Improve metadata with AI" button in any reference's info panel. **Never** on already-clean refs, never on refs without a PDF. Metered against a free monthly credit allocation, surfaced inside Milton's existing `freemium` + `settings` framework (reuse, not new UI). Standalone: delivers Milton's first AI feature end-to-end (credit ledger + gateway + repair + credits UX + auth), proving the metering pipeline.
+**FRs covered:** FR1–FR27, FR32, FR35
 
-### Epic 2: Operator Visibility & Launch Trust
+### Epic 2: Operator Visibility & Launch Trust *(MVP — Phase 1)*
 
 The operator can run epic-21 safely in production — reconcile the credit ledger against provider cost, monitor free-tier COGS, watch the demand signal, catch abuse — and the launch is honest: the privacy policy discloses third-party AI processing and the product signposts planned BYOK/local options. Builds on Epic 1's ledger; delivers operator + trust value independently.
 **FRs covered:** FR28–FR31, FR33, FR34
+
+### Epic 3: Chat with Your PDF *(Phase 2)*
+
+Milton's marquee AI feature: a desktop chat panel beside the PDF where the user can ask questions about a paper and get streaming answers grounded in the document. Long-context + Anthropic prompt caching (cheaper after turn ~2 than RAG, higher quality for single-document reasoning per AD-5). Uses Epic 1's gateway + ledger; reuses the existing `freemium` framework for credit enforcement; no new monetization required beyond Epic 4.
+
+### Epic 4: Credit Packs — One-Time AI Top-Ups *(Phase 2)*
+
+Lets users buy a one-time credit pack when they need more AI than their plan includes. Plugs into Milton's *existing* `features/settings/checkout.ts` (Polar) and `polar-webhook` edge function — no new billing infrastructure, just a new SKU + the redemption flow + a CTA in the existing `limit-reached-modal`.
 
 ---
 
@@ -242,41 +251,63 @@ So that my bad bibliographic data is fixed by AI.
 
 **Given** a user with insufficient credits **When** they request repair **Then** they receive 402 and no provider call is made.
 
-### Story 1.7: Extension AI metadata-repair client
+### Story 1.7: Extension — AI metadata repair as a capture fallback
 
 As a researcher using the Milton browser extension,
-I want to repair reference metadata with AI from the popup,
-So that I can fix messy references without leaving my browser.
+I want AI to silently fill in metadata when the deterministic capture path can't,
+So that papers from unsupported sites still capture with clean references in one click.
 
 **Acceptance Criteria:**
 
-**Given** references in the extension **When** I select one or more and choose "Repair metadata with AI" **Then** the extension calls `/v1/ai/metadata-repair` with a valid JWT and applies the returned fields.
+**Given** I trigger an extension capture **When** the deterministic path (translator / DOI / Crossref) returns complete metadata **Then** the capture saves as today — AI is **not** invoked (FR12 negative case: never on already-clean).
 
-**Given** a completed repair **When** results are shown **Then** AI-repaired fields are visibly marked and pre-repair values are preserved so I can revert (FR14, FR17).
+**Given** I trigger an extension capture on a paper-with-PDF context **When** the deterministic path returns incomplete metadata (no DOI + missing core fields) **Then** the extension calls `/v1/ai/metadata-repair` as a fallback with what it has, then saves the reference with the AI-repaired fields (cases a + c — FR12).
 
-**Given** the popup is open **When** I look at it **Then** my credit balance and reset date are shown in human-readable terms (FR20, FR21, FR23).
+**Given** a completed AI fallback **When** the ref is saved **Then** AI-repaired fields are visibly marked in the popup confirmation and the pre-fallback values are preserved so the user can revert (FR14, FR17).
 
-**Given** my free allocation is exhausted mid-run **When** repair continues **Then** it pauses gracefully with a clear reset-date message — 402 handled, not crashed (FR24).
+**Given** the popup is open **When** I look at it **Then** my AI credit balance + reset date are shown in human-readable terms (FR20, FR21, FR23).
+
+**Given** my free allocation is exhausted **When** an AI fallback would fire **Then** the gateway returns 402; the extension surfaces a popup-appropriate exhaustion message with the reset date (FR24); the reference still saves with whatever the deterministic path produced (no failed capture).
 
 **Given** the new UI **When** reviewed **Then** it meets the existing extension accessibility baseline (NFR16) and carries SPDX/AGPL headers.
 
-### Story 1.8: Desktop AI metadata-repair client
+### Story 1.8: Desktop — AI metadata repair on PDF/Zotero import + info-panel button
 
 As a researcher using the Milton desktop app,
-I want to repair reference metadata with AI, including on bulk imports,
-So that a messy imported library is cleaned in one action.
+I want AI to silently improve metadata when I add a PDF or import a messy reference, and to be able to trigger it manually on any reference,
+So that messy refs get cleaned without me thinking about it, and I always have an explicit fix-it option.
 
 **Acceptance Criteria:**
 
-**Given** references in Milton-desktop **When** I select references (including a bulk import) and run "Repair metadata with AI" **Then** the desktop client calls the gateway and applies/marks results, with bulk runs showing progress.
+**Given** I create a new reference *from scratch with a PDF* OR add a *direct PDF URL* in "create a ref" **When** the deterministic path (DOI / Crossref / PDF-text extraction) returns incomplete metadata **Then** AI repair fires automatically, returning corrected fields with AI marks applied (FR12 — auto fallback).
 
-**Given** a completed repair **When** shown **Then** AI-repaired fields are marked and revertible (FR14, FR17) and a per-run summary is displayed (FR19).
+**Given** I run a Zotero import **When** a reference has a PDF but lacks author/title **Then** AI repair fires automatically on that reference as part of the import (case d — FR12); references with clean metadata are not touched.
 
-**Given** the desktop UI is open **When** I look at it **Then** credit balance, reset date, and usage history are visible (FR20, FR21, FR22, FR23).
+**Given** an existing reference (any source) **When** I open its info panel and click "Improve metadata with AI" **Then** the desktop calls `/v1/ai/metadata-repair` and applies/marks the result (case b — FR12 manual).
 
-**Given** allocation exhaustion mid-run **When** it happens **Then** the run pauses gracefully with reset messaging (FR24).
+**Given** a PDF-ingestion context **When** the deterministic path produced clean metadata **Then** AI repair is **not** invoked (FR12 negative case — never on already-clean).
 
-**Given** the new UI **When** reviewed **Then** it meets Milton's existing accessibility baseline (NFR16) — visual design per Figma at story-build time.
+**Given** any AI repair completes **When** shown **Then** AI-repaired fields are marked and revertible (FR14, FR17); a per-run summary is shown for bulk imports (FR19).
+
+**Given** the new UI surfaces **When** reviewed **Then** they meet Milton's existing accessibility baseline (NFR16) — visual design per Figma at story-build time.
+
+### Story 1.9: Desktop settings — opt-out toggle, freemium integration, credits view
+
+As a Milton user,
+I want a settings toggle to disable automatic AI metadata repair, and to see/manage my AI credits inside the existing settings surface,
+So that I'm in control of my AI spend and credits feel like part of the app, not a bolt-on.
+
+**Acceptance Criteria:**
+
+**Given** `settings-modal` is open **When** I navigate to AI settings **Then** I see a toggle "Automatically improve metadata with AI on imports" (default on — FR35).
+
+**Given** the toggle is OFF **When** I trigger an import that *would* have fired AI repair **Then** AI is not invoked; the reference saves with whatever deterministic data exists (the manual info-panel button still works regardless).
+
+**Given** I'm in `settings-modal` **When** I look at AI **Then** my credits view (balance, reset date, recent usage) is shown adjacent to `plan-billing-form` (FR20, FR21, FR22) — slotted into the existing settings shell, not a separate surface.
+
+**Given** my free AI allocation is exhausted **When** any AI repair would fire **Then** the existing `lib/features/freemium/components/limit-reached-modal.svelte` is reused — extended to recognize AI credits as the limited resource (FR24); no new exhaustion modal is built.
+
+**Given** the integration **When** reviewed **Then** it reuses `lib/features/freemium/utils/enforce-limit.ts` for tier-limit logic rather than reimplementing.
 
 ---
 
@@ -325,3 +356,139 @@ So that I can make an informed choice about using it.
 **Given** the product **When** a user views the AI settings/docs **Then** it signposts that bring-your-own-key and local-model options are planned, without over-claiming current privacy (FR34).
 
 **Given** the disclosure copy **When** written **Then** it does not claim metered cloud calls are private of the provider.
+
+---
+
+## Epic 3: Chat with Your PDF *(Phase 2 — forward-looking)*
+
+Milton's marquee AI feature. Builds on Epic 1's gateway + ledger and the existing `freemium` framework. The Phase-2 stories below are drafted ahead of execution for planning continuity — formal FR/NFR refs would be added when a Phase-2 PRD is written (or the MVP PRD is extended).
+
+### Story 3.1: Streaming chat endpoint with prompt caching
+
+As a Milton user,
+I want a streaming AI chat endpoint that understands a PDF and remembers our conversation,
+So that I can ask multi-turn questions about a paper and get fast, grounded answers.
+
+**Acceptance Criteria:**
+
+**Given** `POST /v1/ai/chat` with a PDF reference + a user message + a conversation id **When** called **Then** the gateway opens an SSE stream to the client; streams Claude's response token-by-token; passes the PDF + chat history with Anthropic prompt caching enabled.
+
+**Given** a multi-turn conversation **When** turn 2+ runs **Then** the static prefix (system prompt + PDF) is cache-read at ~10% of base cost (Anthropic 90% cache discount applied).
+
+**Given** the stream completes **When** the final usage chunk arrives **Then** the gateway settles the ledger with the actual token cost (estimate-then-settle for streaming via the standalone reserve/settle endpoints introduced in this story).
+
+**Given** a stream in progress **When** the client disconnects **Then** the gateway captures partial-stream tokens and settles for what was actually generated — no double-charge on retry (idempotency key).
+
+**Given** insufficient credits at chat-start **When** the user sends a message **Then** the request returns 402 (no provider call) and the existing `limit-reached-modal` fires.
+
+### Story 3.2: Tiered PDF input pipeline
+
+As the Milton platform,
+I want a tiered PDF-to-Claude pipeline that picks the cheapest sufficient approach per document,
+So that simple PDFs cost less and complex layouts still get accurate handling.
+
+**Acceptance Criteria:**
+
+**Given** a born-digital, single-column PDF **When** prepared for chat **Then** text extraction (the existing PDF-text path or Marker-PDF locally) is used; the extracted text is sent to Claude.
+
+**Given** a complex-layout PDF (multi-column / heavy equations / scanned) **When** prepared for chat **Then** native PDF upload to Claude is used (vision tokens accepted for layout fidelity).
+
+**Given** a scan that text-extraction fails on **When** prepared **Then** OCR via Mistral OCR (or local Marker-PDF) is the fallback (architecture AD-5).
+
+**Given** any PDF **When** prepared once for a conversation **Then** the prepared form is reused across all turns — no re-prep per message.
+
+### Story 3.3: Desktop chat-with-PDF UI
+
+As a researcher reading a PDF in Milton-desktop,
+I want a chat panel beside the PDF where I can ask questions about it,
+So that I can quickly understand a paper without leaving the app.
+
+**Acceptance Criteria:**
+
+**Given** the PDF viewer is open on a reference **When** I open the chat panel **Then** a new chat session is started bound to that PDF.
+
+**Given** the chat panel is open **When** I send a message **Then** the response streams in token-by-token via `@ai-sdk/svelte`'s `Chat` class targeting the Rust loopback (which proxies to `/v1/ai/chat`).
+
+**Given** a streaming response in progress **When** I cancel **Then** the stream stops and the ledger settles for tokens actually generated.
+
+**Given** the chat panel **When** open **Then** I see remaining credits and the model in use (Claude for Phase 2).
+
+**Given** the new UI **When** reviewed **Then** visual design is per Figma; meets the existing accessibility baseline.
+
+### Story 3.4: Conversation persistence (local-first)
+
+As a researcher,
+I want my chat conversations saved on my device alongside the PDF,
+So that I can return to a conversation and the cloud doesn't store my interactions.
+
+**Acceptance Criteria:**
+
+**Given** a chat session **When** I send/receive messages **Then** the conversation is persisted locally in the desktop's SQLite (per architecture: chats are local-first; the cloud sees only what a metered call needs).
+
+**Given** a saved conversation **When** I reopen the PDF later **Then** I can resume in context.
+
+**Given** a deleted reference **When** I remove it **Then** its associated conversation is also removed.
+
+**Given** Milton's servers **When** inspected **Then** they do not store chat content (server logs only token counts/costs for metering — data minimization).
+
+### Story 3.5: Mid-stream credit handling & graceful recovery
+
+As a Milton user,
+I want chat to handle running out of credits mid-conversation gracefully,
+So that I don't lose context and I know what's happening.
+
+**Acceptance Criteria:**
+
+**Given** I'm mid-conversation **When** my next message would put me over the available balance **Then** the gateway returns 402 *before* opening the stream; the existing `limit-reached-modal` fires; conversation history is preserved.
+
+**Given** a long response that mid-stream exhausts the reservation **When** it happens **Then** the stream terminates cleanly with a user-visible "response cut short — out of credits" message; the partial response is preserved.
+
+**Given** a provider error mid-stream **When** it happens **Then** the user sees a typed-error message; the ledger settles only for tokens actually generated.
+
+---
+
+## Epic 4: Credit Packs — One-Time AI Top-Ups *(Phase 2 — forward-looking)*
+
+Lets users buy a one-time top-up when their plan's allocation is exhausted. Plugs into Milton's *existing* `features/settings/checkout.ts` (Polar) and `polar-webhook` edge function — no new billing infrastructure, just a new SKU + the redemption flow + a CTA in the existing `limit-reached-modal`.
+
+### Story 4.1: Credit-pack SKU + checkout flow
+
+As a Milton user,
+I want to buy a one-time credit pack when I need more AI than my plan includes,
+So that I'm not blocked mid-task by an exhausted allocation.
+
+**Acceptance Criteria:**
+
+**Given** a credit-pack SKU is configured in Polar **When** the user picks a pack **Then** the desktop client redirects to Polar checkout via the existing `lib/features/settings/utils/checkout.ts` flow.
+
+**Given** the existing checkout flow **When** extended for packs **Then** the only changes are (a) a new product type and (b) the success-callback variant — no parallel billing path.
+
+**Given** several pack sizes (e.g. small / medium / large) **When** the user picks one **Then** the Polar checkout reflects the chosen pack's price (calibrated against measured per-feature cost).
+
+### Story 4.2: Pack-purchase webhook → ledger grant
+
+As the Milton platform,
+I want a successful credit-pack purchase to immediately credit the user's ledger,
+So that they can use their new credits within seconds of paying.
+
+**Acceptance Criteria:**
+
+**Given** the existing `polar-webhook` Supabase edge function **When** it receives a pack-purchase event **Then** it writes a `grant` row to `ai_credit_ledger` for the purchasing user with the pack's credit amount and a stable idempotency key derived from the Polar event id (no double-credit on webhook retry).
+
+**Given** a purchase **When** the grant lands **Then** the user's next `/v1/ai/balance` reflects it.
+
+**Given** a refund/chargeback **When** the webhook signals it **Then** a `correction` row is written (negative amount); the balance adjusts accordingly.
+
+### Story 4.3: "Buy more credits" CTA in limit-reached-modal
+
+As a Milton user who just hit my AI limit,
+I want to buy more credits without leaving the modal,
+So that I can keep working.
+
+**Acceptance Criteria:**
+
+**Given** the existing `limit-reached-modal` fires for AI credits **When** Polar credit packs are configured **Then** the modal shows a "Buy more credits" CTA alongside the existing "Upgrade plan" option.
+
+**Given** I click "Buy more credits" **When** I complete checkout **Then** the modal updates to "Credits added" and dismisses; my original action (capture / chat message) can be retried.
+
+**Given** a paid-tier user already at the highest plan **When** they hit the limit **Then** the modal offers credit packs prominently (since upgrade isn't an option).

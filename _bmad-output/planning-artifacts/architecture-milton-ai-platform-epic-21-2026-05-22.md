@@ -112,7 +112,7 @@ AD-3 (research) recommends "embed **LiteLLM** as a library/router." LiteLLM is a
 
 - **Critical (block implementation):** credit-ledger schema (Supabase migration) · AI gateway service shape · auth + tier integration · provider integration approach.
 - **Important:** error taxonomy · token-based rate limiting · observability events.
-- **Deferred (post-MVP):** Polar billing integration (Phase 2) · multi-provider via Vercel AI SDK (Phase 3) · streaming reserve/settle endpoints (Phase 2).
+- **Deferred (post-MVP):** **credit packs** as a new Polar SKU (Phase 2 — the rest of Polar billing already exists in `features/settings/checkout.ts`) · chat-with-PDF streaming + standalone reserve/settle endpoints (Phase 2) · multi-provider via Vercel AI SDK (Phase 3) · BYOK + local LLM (Phase 3) · semantic search (Phase 4).
 
 ### Ratification of AD-1 → AD-9 (research decision register)
 
@@ -282,6 +282,18 @@ milton-browser-extension/src/
 ### Reuse, Don't Rebuild
 
 The auth-proxy already ships `jwt-verifier`, `tier-verifier`, `rate-limiter`, `posthog`, `confidence-score`, `doi-resolve`, `crossref-title-search`, `safe-fetch`. **Recommendation:** extract the genuinely shared ones (`jwt-verifier`, `tier-verifier`, `rate-limiter`, `posthog`) into a small shared package both the auth-proxy and `ai-gateway` import — not copy-paste. Notably, `confidence-score` + `doi-resolve` + `crossref-title-search` are directly useful for **validating AI-repaired metadata against Crossref/DOI** — a quality lever the metadata-repair handler should exploit.
+
+**On the desktop side, Milton already ships a freemium + settings framework:**
+
+| Module | What it provides | Epic-21 reuses it for |
+|---|---|---|
+| `lib/features/freemium/utils/enforce-limit.ts` | Tier-limit enforcement for the existing PDF-analysis quota | AI-credits limit enforcement (extend the same framework) |
+| `lib/features/freemium/components/limit-reached-modal.svelte` | The "you hit the limit" modal | AI-credits exhaustion UX — fire the *same* modal (FR24) |
+| `lib/features/settings/components/plan-billing-form.svelte` | Plan + billing UI | The credits/usage view slots into `settings-modal` next to it |
+| `lib/features/settings/utils/checkout.ts` | Polar checkout flow | Phase-2 credit-pack purchase reuses the same checkout path |
+| `lib/features/settings/components/settings-modal.svelte` | The unified settings shell | Hosts AI settings (e.g. the FR35 auto-AI opt-out toggle) and the credits view |
+
+**Implication:** epic-21's client-side credits surface is overwhelmingly *integration into existing modules*, not new UI. The MVP client stories (1.7 / 1.8 / 1.9) extend `freemium` + `settings` rather than invent new surfaces; Phase 2 monetization shrinks to "credit-pack SKU + extend the existing checkout flow."
 
 ### Integration Points
 
