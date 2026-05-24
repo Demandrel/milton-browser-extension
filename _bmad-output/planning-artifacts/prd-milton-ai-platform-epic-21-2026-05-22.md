@@ -119,7 +119,7 @@ Milton is a **non-regulated domain** (research-productivity software) — no HIP
 ### Compliance & Regulatory
 
 - **GDPR / data protection** — epic-21 introduces a new data flow: AI metadata repair sends reference metadata to a third-party LLM provider (Anthropic). The MVP must (a) disclose this AI processing in the privacy policy — the existing `PRIVACY.md` (from BE-8-10) needs an AI-processing addendum; (b) establish a lawful basis; (c) cite Anthropic's API terms (no training on API inputs) as a processing safeguard.
-- **Payments** — out of MVP scope (Stripe arrives Phase 2). When it lands, card data stays in Stripe's PCI scope — Milton never handles raw card data.
+- **Payments** — already integrated (Polar, via `features/settings/checkout.ts`). Adding AI credit packs is a Phase-2 SKU on the existing Polar flow. Card data stays in Polar's PCI scope — Milton never handles raw card data.
 - The credit ledger stores per-user usage + balance (personal data tied to an account) — standard GDPR handling: user access and deletion.
 
 ### Technical Constraints
@@ -207,7 +207,7 @@ Cross-repo coordination (server in Milton-saas, client triggers here) via the Op
 
 ### MVP Strategy & Philosophy
 
-**MVP Approach:** a **validated-learning + platform-foundation** MVP. Phase 1 deliberately builds the full credits/metering spine but ships only *one* user-facing feature (metadata repair) on a *free* allocation — no monetization. The rationale: prove the two riskiest things cheaply before investing in Stripe and a paid tier — (1) the credit ledger is **correct** (it is money), and (2) users genuinely **want** the AI (the demand signal). It is not a revenue MVP; it is the de-risking step that makes the Phase-2 revenue MVP safe to build.
+**MVP Approach:** a **validated-learning + platform-foundation** MVP. Phase 1 deliberately builds the full credits/metering spine but ships only *one* user-facing feature (metadata repair) on a *free* allocation — no AI monetization yet (Milton's general paid plans + Polar checkout already exist; this MVP just doesn't wire AI credits into them). The rationale: prove the two riskiest things cheaply before adding paid AI mechanics — (1) the credit ledger is **correct** (it is money), and (2) users genuinely **want** the AI (the demand signal).
 
 **Resource Requirements:** solo build. The MVP is scoped to be survivable solo — one feature, one provider, no billing. Skills: Rust (gateway/ledger), TS/Svelte (thin client), prompt engineering + evals.
 
@@ -227,15 +227,15 @@ Cross-repo coordination (server in Milton-saas, client triggers here) via the Op
 
 ### Post-MVP Features
 
-- **Phase 2 (Growth — monetization):** chat-with-PDF (streaming, long-context + caching); Stripe; Pro tier (~€5–8/mo); credit packs; standalone reserve/settle endpoints for streaming billing.
+- **Phase 2 (Growth — chat + credit packs):** chat-with-PDF (streaming, long-context + caching); a **credit-pack SKU on Polar** (Polar checkout + tiered plans already exist — no new billing infrastructure); standalone reserve/settle endpoints for streaming billing.
 - **Phase 3 (Expansion — differentiators):** multi-provider model choice (OpenAI/Mistral/DeepSeek); BYOK (desktop, OS keychain); local LLM (Ollama). The category position.
 - **Phase 4 (Vision):** local-first semantic search; then the credits platform extends to any AI task.
 
 ### Risk Mitigation Strategy
 
 - **Technical risks:** the ledger is the riskiest part (money) → payment-grade transactional tests, idempotency, atomic debit; ship simple (Claude-only, no streaming) to keep the MVP surface small; multi-provider complexity deferred entirely to Phase 3.
-- **Market risks:** the biggest — does anyone want/pay for this? → the MVP *is* the mitigation: it ships free and measures the demand signal (free-allocation exhaustion) before a cent is spent on Stripe. Weak signal → Phase 2 is not built — a cheap failure.
-- **Resource risks:** solo capacity vs platform scope → strict phasing, each phase independently shippable *and* abandonable; bias to buy/embed (LiteLLM, Stripe primitives, Langfuse, Ollama). If resources tighten, the MVP stands alone as a useful free feature.
+- **Market risks:** the biggest — does anyone want/pay for AI? → the MVP *is* the mitigation: it ships free and measures the demand signal (free-allocation exhaustion) before any AI-monetization work. Weak signal → Phase 2 monetization is not built — a cheap failure.
+- **Resource risks:** solo capacity vs platform scope → strict phasing, each phase independently shippable *and* abandonable; bias to buy/embed (Anthropic SDK directly, existing Polar/freemium framework, Ollama later). If resources tighten, the MVP stands alone as a useful free feature.
 
 ---
 

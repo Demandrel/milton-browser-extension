@@ -144,12 +144,12 @@ The MVP is **Phase 1 — AI Foundation**: the smallest release that proves AI va
 3. **AI metadata repair** — the first user-facing feature: AI fixes bad/missing metadata on imported references, especially messy bulk imports. Low-risk to build (structured output, no streaming UI), a genuine unsolved pain (competitor scan flagged it as a gap), and a complete end-to-end proof of gateway + ledger.
 4. **Credits/usage surface** — a minimal in-app view of remaining credits and recent AI usage.
 
-MVP is **Claude-only — no model choice, no BYOK, no local, no Stripe, no paid tier.** Those are deliberately deferred.
+MVP is **Claude-only — no model choice, no BYOK, no local, no AI-paid mechanics yet** (Milton's general paid plans + Polar checkout already exist; the MVP just doesn't wire AI credits into them). Those are deliberately deferred.
 
 ### Out of Scope for MVP
 
 - **Chat-with-PDF** — the marquee feature, but carries streaming-chat-UI risk; lands in Phase 2 on a metering pipeline the MVP already proved.
-- **Pro tier, Stripe, credit packs** — Phase 2. MVP ships free-only on purpose: validate users *want* the AI before building billing. (The north-star is therefore validated at end of Phase 2, not MVP.)
+- **AI credit packs on Polar** — Phase 2 (Polar checkout + tiered plans already exist; only the credit-pack SKU + AI-credit grants are net-new). MVP ships free-only on purpose: validate users *want* the AI before wiring AI billing.
 - **Multi-provider choice, BYOK, local LLM** — Phase 3. The category differentiators, but highest-complexity; need a proven Phase 1–2.
 - **Semantic search** — Phase 4; a separable local-first sub-system.
 - **Multi-seat / Team** — not on the roadmap; Milton stays single-user.
@@ -168,7 +168,7 @@ If the ledger is correct and the demand signal is present → build Phase 2.
 
 Post-MVP, the four-phase roadmap (from the technical research):
 
-- **Phase 2 — Chat + Monetization** — chat-with-PDF (long-context + caching); Stripe; the **Pro tier at ~€5–8/mo**; one-time **credit packs**; **credits debit at a modest ~1.5–2× markup** over provider cost (margin from both subscription and usage). This phase turns on the north-star.
+- **Phase 2 — Chat + Credit Packs** — chat-with-PDF (long-context + caching); **credit-pack SKU on Polar** (Polar checkout and tiered plans already exist — net-new is the SKU + AI-credit grant logic + the "Buy more credits" CTA in the existing `limit-reached-modal`); **credits debit at a modest ~1.5–2× markup** over provider cost. This phase turns on the north-star (AI drives upgrades to existing plans + AI top-ups).
 - **Phase 3 — The Differentiators** — multi-provider model choice (OpenAI, Mistral, DeepSeek added to the gateway); BYOK (desktop, OS keychain); downloadable local LLMs. The category position: the only hosted reference manager with AI on your terms.
 - **Phase 4 — Corpus Intelligence** — local-first semantic search across the whole library; parallel-track-capable from Phase 2 onward.
 - **Beyond** — the credits platform extends to any future AI task (summarization, writing assistance, literature-review tooling) without re-architecting.
