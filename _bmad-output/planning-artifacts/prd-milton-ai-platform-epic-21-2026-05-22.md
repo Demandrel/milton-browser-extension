@@ -29,7 +29,9 @@ date: 2026-05-22
 **Author:** Pierre
 **Date:** 2026-05-22
 
-> **⚠ Correction note (added 2026-05-22, after the architecture workflow inspected the Milton-saas repo).** Three statements in this document are **superseded**: (1) billing is **Polar**, not Stripe; (2) Milton **already has paid tiers** (`plan_tier` = free/monthly/yearly/lifetime/founder) — epic-21 consumes the existing tier system rather than introducing one; (3) AI metadata repair and usage metering are **not greenfield** — they evolve Milton's existing GROBID PDF-analysis and the `pdf_analysis_usage` quota. Full detail: the *Corrections to Upstream Documents* section of `architecture-milton-ai-platform-epic-21-2026-05-22.md`.
+> **⚠ Correction note (added 2026-05-22).** Three statements in this document are **superseded**: (1) billing is **Polar**, not Stripe; (2) Milton **already has paid tiers** (`plan_tier` = free/monthly/yearly/lifetime/founder); (3) AI metadata repair and usage metering are **not greenfield** — they evolve Milton's existing GROBID PDF-analysis + `pdf_analysis_usage`. Detail in the *Corrections to Upstream Documents* section of `architecture-…-2026-05-22.md`.
+>
+> **⚠ Re-sequence note (added 2026-05-25 evening).** Phase 1 of the MVP is now **chat-with-PDF (the marquee feature)**, not AI metadata repair. Metadata repair drops to **Phase 1.5**. FR12–FR19 + FR35 still describe metadata repair correctly — they now apply to Phase 1.5 not Phase 1. **FR36–FR45 (added below) describe the new Phase-1 chat-with-PDF capabilities.** Maya's journeys (J1/J2) describe metadata-repair flows from a Phase-1.5 perspective; the Phase-1 chat journey lives in the **overview doc §4**. The **epics doc** carries the current authoritative epic/story structure post-swap. For the current view of the whole plan, read `epic-21-plan-overview-2026-05-22.md` first.
 
 > **Scope:** This PRD covers the **MVP = Phase 1 (AI Foundation)** of epic-21. Later phases (chat-with-PDF, monetization, multi-provider/BYOK/local, semantic search) appear as roadmap context only. Built on `product-brief-milton-ai-platform-2026-05-22.md` and `research/technical-milton-ai-strategy-research-2026-05-22.md`.
 >
@@ -295,6 +297,19 @@ Cross-repo coordination (server in Milton-saas, client triggers here) via the Op
 - **FR33:** The system discloses, in the privacy policy, that AI features send data to a third-party LLM provider.
 - **FR34:** The product signposts that bring-your-own-key and local-model options are planned, without over-claiming current privacy.
 - **FR35:** A user can disable automatic AI metadata repair in settings (the manual info-panel button remains available). Default: on.
+
+### Chat with Your PDF *(Phase 1 — MVP marquee, added 2026-05-25)*
+
+- **FR36:** A user can open a chat panel beside a PDF and ask questions about it (desktop only at MVP — the extension has no PDF viewer).
+- **FR37:** The system streams chat responses token-by-token to the client over SSE.
+- **FR38:** The system maintains conversation context across multiple turns within a session bound to a PDF.
+- **FR39:** The system applies Anthropic prompt caching to the PDF + system prompt across turns to minimize cost.
+- **FR40:** The system prepares each PDF using a tiered pipeline (text extraction for born-digital, native-PDF upload for complex layout, OCR fallback).
+- **FR41:** A user can cancel a streaming response mid-stream; the ledger settles only for tokens actually generated.
+- **FR42:** The system stores chat conversations locally on the user's device, not on Milton's servers (data minimization).
+- **FR43:** When the user removes a reference, its associated chat conversation is also removed.
+- **FR44:** When credits would be exhausted by a chat call, the gateway returns 402 *before* opening the stream; the existing `limit-reached-modal` fires; conversation history is preserved.
+- **FR45:** When a stream mid-flight exhausts the reservation, the stream terminates cleanly with a user-visible "response cut short — out of credits" message and the partial response is preserved.
 
 ---
 

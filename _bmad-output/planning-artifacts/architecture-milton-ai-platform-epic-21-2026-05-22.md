@@ -21,6 +21,8 @@ scope: 'MVP = Phase 1 (AI Foundation)'
 _This document builds collaboratively through step-by-step discovery. Sections are appended as we work through each architectural decision together._
 
 > **Scope:** epic-21 MVP = Phase 1 (AI Foundation). Ratifies and formalizes decision register **AD-1→AD-9** from `research/technical-milton-ai-strategy-research-2026-05-22.md`. Built on the PRD (`prd-milton-ai-platform-epic-21-2026-05-22.md`) and product brief.
+>
+> **⚠ Re-sequence note (added 2026-05-25 evening).** Phase 1 of the MVP is now **chat-with-PDF** (the marquee feature), not AI metadata repair. Metadata repair drops to **Phase 1.5**. The decision register (AD-1→AD-9), the verified stack (TS/Bun + Supabase + Polar + freemium reuse), the gateway architecture, and the cross-repo project structure are **unchanged** — only the feature *sequencing* moves. The implementation sequence in §Decision Impact below now starts with the chat endpoint (Story 1.6), not metadata-repair. The **overview doc** (`epic-21-plan-overview-2026-05-22.md`) is the current authoritative summary; the **epics doc** carries the post-swap epic/story structure.
 
 ## Project Context Analysis
 
