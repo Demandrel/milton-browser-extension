@@ -8,6 +8,22 @@ export default defineManifest({
   name: 'Milton',
   description,
   version,
+
+  // 🔴 PINS THE EXTENSION ID. Without `key`, Chrome derives the id from the
+  // unpacked install PATH, so it changed every time the folder moved — and the
+  // desktop app's connector allowlist is keyed on that id. That is why every
+  // release build refused every extension (Milton PR #354): the id it trusted
+  // could not be predicted, let alone baked in.
+  //
+  // This is the PUBLIC half of an RSA keypair; publishing it is what it is for.
+  // The id it produces is `enhffaegfnjigghdgokodohjefdnfopb`, and that value is compiled into
+  // `DEFAULT_EXTENSION_IDS` in `connector/handlers.rs`. Changing this key
+  // changes the id and breaks the connector until both move together.
+  //
+  // ⚠️ The Chrome Web Store assigns its OWN id on publication. When that
+  // happens, add it to the allowlist too rather than replacing this one, or
+  // every sideloaded build stops working.
+  key: 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqgDqB6Xr7rrO4B5FIGf85gqs4nJxhCp+VV3PX0q4wN02Y1LHv/NHU417EiVPEJ6V3yr9Avr9fq+cVb20sIClaFYSZ09dSNtmkm4zZeVp6uRhZL3SS3TUit23ewmjPUCTaZX5JnXL28X0N/0ni1q6o1p5nmwOxLA66vXeeOedrjgMX8wsiVfUwO129qIXAN3VwapZXO7BK5QS7r6pDe/u83iv1pPbsELyGvj+cNrfOyB/d0k77eAUL0G6zT28UtaRe9a3m9DtJxnbGKMtlA2t/rEhSdz7qB6VJAvcbeEa1VZIewpu6EOdYh5e92K/p9EVmgYV23RnoCQYV1ZsuCUXOQIDAQAB',
   action: {
     default_popup: 'src/popup/index.html',
     default_title: 'Save to Milton',
